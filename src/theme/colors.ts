@@ -1,0 +1,30 @@
+import { brand } from './brand';
+
+export const colors = {
+  background: '#F5F5F7',
+  surface: '#FFFFFF',
+  primary: brand.black,
+  primaryText: brand.white,
+  text: brand.black,
+  textSecondary: '#6E6E73',
+  textMuted: '#AEAEB2',
+  border: '#E5E5EA',
+  borderLight: '#F0F0F2',
+  mapLand: '#E8EDDF',
+  mapRoad: '#FFFFFF',
+  mapWater: '#C8DDE8',
+  mapRoute: brand.black,
+  online: '#34C759',
+  offline: '#8E8E93',
+  danger: '#FF3B30',
+  dangerLight: '#FFF0EF',
+  warning: '#FF9500',
+  star: '#FFB800',
+  shadow: 'rgba(0, 0, 0, 0.08)',
+  overlay: 'rgba(0, 0, 0, 0.4)',
+  brandBlack: brand.black,
+  brandRed: brand.red,
+  brandWhite: brand.white,
+  /** @deprecated use brandRed */
+  tukRed: brand.red,
+} as const;

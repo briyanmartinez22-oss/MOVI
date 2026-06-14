@@ -1,0 +1,33 @@
+# Render Blueprint — MOVI Backend + PostgreSQL
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: movi-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: movi-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: DEMO_OTP_CODE
+        value: "123456"
+      - key: STORAGE_MODE
+        value: local
+      - key: PUBLIC_URL
+        sync: false
+
+databases:
+  - name: movi-postgres
+    plan: starter
+    databaseName: movi
+    user: movi
