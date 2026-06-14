@@ -9,8 +9,8 @@ COPY . .
 # Generate Prisma client for PostgreSQL (production); build-time URL is a placeholder.
 ENV DATABASE_PROVIDER=postgresql
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/movi?schema=public
-RUN npm run build
 RUN npm run db:generate
+RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app

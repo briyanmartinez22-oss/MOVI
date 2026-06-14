@@ -1,10 +1,22 @@
-import type { ServiceType, TripLifecycleStatus, TripOffer } from '@prisma/client';
+import type { ChatMessage, ServiceType, Trip, TripLifecycleStatus, TripOffer } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseJsonField, stringifyJsonField } from '../utils/normalize';
 import { canDriverOperate } from './subscription.service';
 
 export const MIN_OFFER_PRICE = 0.5;
 export const OFFER_PRICE_STEP = 0.5;
+
+type SerializedTripOffer = {
+  id: string;
+  driverId: string;
+  driver: Awaited<ReturnType<typeof buildDriverProfile>>;
+  price: number;
+  etaMinutes: number;
+  status: string;
+  createdAt: number;
+};
+
+type DriverIdRow = { id: string };
 
 export interface PlaceInput {
   id: string;
@@ -85,7 +97,7 @@ export async function serializeTrip(tripId: string) {
   if (!trip) return null;
 
   const offers = await Promise.all(
-    trip.offers.map(async (offer) => {
+    trip.offers.map(async (offer: TripOffer) => {
       const driver = await buildDriverProfile(offer.driverId);
       return {
         id: offer.id,
@@ -100,7 +112,7 @@ export async function serializeTrip(tripId: string) {
   );
 
   const acceptedOffer = trip.acceptedOfferId
-    ? offers.find((o) => o.id === trip.acceptedOfferId) ?? null
+    ? offers.find((o: SerializedTripOffer) => o.id === trip.acceptedOfferId) ?? null
     : null;
 
   return {
@@ -467,7 +479,7 @@ export async function getTripHistory(userId: string, role: string) {
                   where: { owner: { userId } },
                   select: { id: true },
                 })
-              ).map((d) => d.id),
+              ).map((d: DriverIdRow) => d.id),
             },
           }
         : { passengerId: userId };
@@ -481,7 +493,7 @@ export async function getTripHistory(userId: string, role: string) {
     take: 100,
   });
 
-  return Promise.all(trips.map((t) => serializeTrip(t.id)));
+  return Promise.all(trips.map((t: Trip) => serializeTrip(t.id)));
 }
 
 export async function getEligibleDriverUserIds(): Promise<string[]> {
@@ -550,7 +562,7 @@ export async function getChatMessages(tripId: string) {
     orderBy: { createdAt: 'asc' },
     take: 200,
   });
-  return messages.map((m) => ({
+  return messages.map((m: ChatMessage) => ({
     id: m.id,
     tripId: m.tripId,
     senderId: m.senderId,

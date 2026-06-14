@@ -1,6 +1,9 @@
-import type { UserRole } from '@prisma/client';
+import type { Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseJsonField, toAuthUser } from '../utils/normalize';
+
+type RoleAssignmentRow = Prisma.UserRoleAssignmentGetPayload<{ select: { role: true } }>;
+type OwnerVehicleRow = Prisma.VehicleGetPayload<{ include: { driver: true } }>;
 
 export async function assignUserRole(userId: string, role: UserRole) {
   return prisma.userRoleAssignment.upsert({
@@ -15,7 +18,7 @@ export async function getUserRoles(userId: string): Promise<UserRole[]> {
     where: { userId, isActive: true },
     select: { role: true },
   });
-  const roles = assignments.map((a) => a.role);
+  const roles = assignments.map((a: RoleAssignmentRow) => a.role);
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (user && !roles.includes(user.role)) roles.unshift(user.role);
   return [...new Set(roles)];
@@ -114,7 +117,7 @@ export async function listOwnerVehicles(ownerUserId: string) {
     orderBy: { createdAt: 'desc' },
   });
 
-  return vehicles.map((v) => ({
+  return vehicles.map((v: OwnerVehicleRow) => ({
     vehicleId: v.id,
     unitId: v.unitId,
     ownerId: v.ownerId,

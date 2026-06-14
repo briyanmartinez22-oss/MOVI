@@ -1,4 +1,4 @@
-import type { NotificationType } from '@prisma/client';
+import type { Notification, NotificationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { stringifyJsonField } from '../utils/normalize';
 
@@ -34,7 +34,7 @@ export async function listNotifications(userId: string, limit = 50) {
     orderBy: { createdAt: 'desc' },
     take: limit,
   });
-  return rows.map((n) => ({
+  return rows.map((n: Notification) => ({
     id: n.id,
     type: n.type,
     title: n.title,

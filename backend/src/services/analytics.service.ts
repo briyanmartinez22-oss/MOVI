@@ -1,4 +1,10 @@
+import type { DriverSubscription } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+
+type CountAggregate = { _count: { _all: number } };
+type VehicleTypeGroup = CountAggregate & { vehicleType: string };
+type RequestTypeGroup = CountAggregate & { requestType: string | null };
+type DeliveryCategoryGroup = CountAggregate & { deliveryCategory: string | null };
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   mototaxi: 'Mototaxi',
@@ -53,7 +59,7 @@ export async function getAdminKpis() {
     }),
   ]);
 
-  const mrr = subscriptions.filter((s) => s.status === 'active').length * 7;
+  const mrr = subscriptions.filter((s: DriverSubscription) => s.status === 'active').length * 7;
   const arr = mrr * 12;
 
   const vehicleBreakdown = await prisma.vehicle.groupBy({
@@ -80,15 +86,15 @@ export async function getAdminKpis() {
       arr,
       subscriptionCount: subscriptions.length,
     },
-    tripsByVehicleType: vehicleBreakdown.map((v) => ({
+    tripsByVehicleType: vehicleBreakdown.map((v: VehicleTypeGroup) => ({
       vehicleType: VEHICLE_TYPE_LABELS[v.vehicleType] ?? v.vehicleType,
       count: v._count._all,
     })),
-    tripsByRequestType: tripsByVehicle.map((t) => ({
+    tripsByRequestType: tripsByVehicle.map((t: RequestTypeGroup) => ({
       type: t.requestType ?? 'ride',
       count: t._count._all,
     })),
-    deliveriesByCategory: deliveriesByCategory.map((d) => ({
+    deliveriesByCategory: deliveriesByCategory.map((d: DeliveryCategoryGroup) => ({
       category: d.deliveryCategory ?? 'general',
       count: d._count._all,
     })),

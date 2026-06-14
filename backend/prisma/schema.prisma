@@ -5,7 +5,7 @@ generator client {
 // Provider is set at migrate/generate time via scripts/prepare-prisma.mjs
 // (sqlite for local dev default, postgresql when DATABASE_URL is postgres)
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

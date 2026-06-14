@@ -1,4 +1,4 @@
-import type { UserRole } from '@prisma/client';
+import type { DriverSession, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { issueRefreshToken } from '../lib/refreshToken';
 import { signAuthToken } from '../lib/jwt';
@@ -727,7 +727,7 @@ export async function getDriverSessionsList(driverId: string) {
     orderBy: { connectedAt: 'desc' },
   });
 
-  return sessions.map((session) => ({
+  return sessions.map((session: DriverSession) => ({
     sessionId: session.sessionId,
     driverId: session.driverId,
     vehicleId: session.vehicleId,
