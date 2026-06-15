@@ -2,8 +2,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Provider is set at migrate/generate time via scripts/prepare-prisma.mjs
-// (sqlite for local dev default, postgresql when DATABASE_URL is postgres)
+// PostgreSQL only — local dev: docker compose up -d (see docker-compose.yml)
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

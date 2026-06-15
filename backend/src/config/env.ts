@@ -1,17 +1,8 @@
 import { z } from 'zod';
 
 const port = Number(process.env.PORT ?? 3001);
-const databaseUrl = process.env.DATABASE_URL ?? 'file:./dev.db';
-
-function resolveDatabaseProvider(): 'sqlite' | 'postgresql' {
-  if (process.env.DATABASE_PROVIDER === 'postgresql' || process.env.DATABASE_PROVIDER === 'sqlite') {
-    return process.env.DATABASE_PROVIDER;
-  }
-  if (databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')) {
-    return 'postgresql';
-  }
-  return 'sqlite';
-}
+const databaseUrl =
+  process.env.DATABASE_URL ?? 'postgresql://movi:movi@localhost:5432/movi?schema=public';
 
 export const env = {
   port: Number.isFinite(port) ? port : 3001,
@@ -20,7 +11,7 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
   nodeEnv: process.env.NODE_ENV ?? 'development',
   databaseUrl,
-  databaseProvider: resolveDatabaseProvider(),
+  databaseProvider: 'postgresql' as const,
   storageMode: process.env.STORAGE_MODE ?? 'local',
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
@@ -38,7 +29,7 @@ export function assertEnv() {
     if (env.jwtSecret === 'dev-secret-change-me' || env.jwtSecret === 'change-me-in-production') {
       throw new Error('JWT_SECRET must be set in production');
     }
-    if (env.databaseProvider !== 'postgresql') {
+    if (!env.databaseUrl.startsWith('postgresql://') && !env.databaseUrl.startsWith('postgres://')) {
       throw new Error('Production requires PostgreSQL (DATABASE_URL=postgresql://...)');
     }
   }
