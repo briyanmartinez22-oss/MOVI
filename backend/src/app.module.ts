@@ -18,6 +18,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { RatingsModule } from './ratings/ratings.module';
 import { TripsModule } from './trips/trips.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
@@ -48,6 +49,7 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     LocationsModule,
     AdminModule,
     AnalyticsModule,
+    RatingsModule,
     UploadsModule,
   ],
   providers: [

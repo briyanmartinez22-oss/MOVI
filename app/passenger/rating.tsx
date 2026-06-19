@@ -6,6 +6,8 @@ import { StarRating, DriverAvatar, PrimaryButton } from '../../src/components';
 import { HelpButton } from '../../src/components/HelpButton';
 import { KeyboardAwareScreen } from '../../src/components/KeyboardAwareScreen';
 import { useTrip } from '../../src/context/TripContext';
+import { submitTripRating } from '../../src/services/ratingService';
+import { showSuccess } from '../../src/utils/feedback';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
@@ -44,7 +46,17 @@ export default function RatingScreen() {
 
         <PrimaryButton
           title="Enviar calificación"
-          onPress={() => router.replace('/passenger')}
+          onPress={async () => {
+            if (!activeTrip || rating === 0) return;
+            await submitTripRating({
+              tripId: activeTrip.id,
+              stars: rating,
+              comment,
+              raterRole: 'passenger',
+            });
+            showSuccess('Gracias', 'Tu calificación fue enviada.');
+            router.replace('/passenger');
+          }}
           disabled={rating === 0}
           style={styles.submitBtn}
         />

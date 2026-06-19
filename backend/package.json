@@ -22,6 +22,7 @@
     "qa:admin-metrics": "tsx scripts/admin-metrics-qa-e2e.ts",
     "qa:integrations": "tsx scripts/integrations-qa-e2e.ts",
     "qa:scheduled-eligibility": "tsx scripts/scheduled-eligibility-qa-e2e.ts",
+    "qa:ratings": "tsx scripts/ratings-qa-e2e.ts",
     "qa:critical": "tsx scripts/critical-e2e.ts",
     "qa:remote": "tsx scripts/remote-ready-e2e.ts"
   },
