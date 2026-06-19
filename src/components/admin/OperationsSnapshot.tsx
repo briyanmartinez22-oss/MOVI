@@ -1,23 +1,33 @@
 import { Text, StyleSheet } from 'react-native';
 import { Card } from '../FormUI';
-import { getIntelligenceKpis } from '../../services/analyticsService';
+import { useAdminMetrics } from '../../hooks/useAdminMetrics';
 import { colors, typography, spacing } from '../../theme';
 
 type Props = { compact?: boolean };
 
 export function OperationsSnapshot({ compact }: Props) {
-  const intel = getIntelligenceKpis();
+  const { metrics, mockMode } = useAdminMetrics();
+  const summary = metrics.summary;
+  const trips = metrics.trips;
+
+  if (mockMode || !summary) {
+    return (
+      <Card style={compact ? styles.compact : undefined}>
+        <Text style={styles.title}>Operación en vivo</Text>
+        <Text style={styles.line}>Sin datos todavía</Text>
+      </Card>
+    );
+  }
 
   return (
     <Card style={compact ? styles.compact : undefined}>
-      <Text style={styles.title}>Inteligencia operativa</Text>
-      <Text style={styles.line}>Horas pico: {intel.peakHours.join(', ')}</Text>
-      <Text style={styles.line}>Días pico: {intel.peakDays.join(', ')}</Text>
-      <Text style={styles.line}>ETA promedio: {intel.avgArrivalMinutes} min</Text>
-      <Text style={styles.line}>Espera promedio: {intel.avgWaitMinutes} min</Text>
-      <Text style={styles.line}>Precio oferta promedio: ${intel.avgOfferedPrice.toFixed(2)}</Text>
-      <Text style={styles.line}>Hotspots: {intel.hotZones.join(' · ') || '—'}</Text>
-      <Text style={styles.line}>Conductores online: {intel.connectedDrivers}</Text>
+      <Text style={styles.title}>Operación en vivo (PostgreSQL)</Text>
+      <Text style={styles.line}>Conductores online: {summary.driversOnline}</Text>
+      <Text style={styles.line}>Viajes activos: {summary.tripsActive}</Text>
+      <Text style={styles.line}>Solicitudes pendientes: {trips?.pendingRequests ?? 0}</Text>
+      <Text style={styles.line}>Ofertas enviadas: {summary.totalOffers}</Text>
+      <Text style={styles.line}>Completados: {summary.tripsCompleted}</Text>
+      <Text style={styles.line}>Cancelados: {summary.tripsCancelled}</Text>
     </Card>
   );
 }

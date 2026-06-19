@@ -14,6 +14,8 @@ export default function AdminDashboard() {
 
   const links = [
     { title: 'Verificaciones', route: '/admin/verifications', icon: 'shield-checkmark' as const },
+    { title: 'Proveedores', route: '/admin/providers', icon: 'people' as const },
+    { title: 'Viajes y solicitudes', route: '/admin/trips', icon: 'car' as const },
     { title: 'Mapa operacional', route: '/admin/operations', icon: 'map' as const },
     { title: 'Analítica avanzada', route: '/admin/analytics', icon: 'bar-chart' as const },
   ];

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../src/components/FormUI';
 import { MapScreen } from '../../src/components';
-import { fetchAdminKpis, fetchDemandZones } from '../../src/services/mockApi';
+import { fetchAdminMetricsSummary, fetchAdminMetricsTrips, fetchDemandZones } from '../../src/services/api';
 import { useMockApi } from '../../src/services/api/config';
 import {
   getLiveOperationsSnapshot,
@@ -16,21 +16,14 @@ import {
   HotspotFilterState,
 } from '../../src/utils/hotspotFilters';
 import type { DemandZone } from '../../src/types/models';
+import type { AdminMetricsSummary, AdminMetricsTrips } from '../../src/types/adminMetrics';
 import { colors, typography, spacing } from '../../src/theme';
-
-type AdminKpisPayload = {
-  operations?: {
-    tripsToday?: number;
-    deliveriesToday?: number;
-    activeDrivers?: number;
-    expiredDrivers?: number;
-  };
-};
 
 export default function AdminOperationsMap() {
   const mockMode = useMockApi();
   const [demandZones, setDemandZones] = useState<DemandZone[]>([]);
-  const [adminKpis, setAdminKpis] = useState<AdminKpisPayload | null>(null);
+  const [summary, setSummary] = useState<AdminMetricsSummary | null>(null);
+  const [tripMetrics, setTripMetrics] = useState<AdminMetricsTrips | null>(null);
   const [hotspotFilters, setHotspotFilters] = useState<HotspotFilterState>({
     service: 'all',
     vehicleType: 'all',
@@ -39,25 +32,22 @@ export default function AdminOperationsMap() {
   useEffect(() => {
     void fetchDemandZones().then(setDemandZones);
     if (!mockMode) {
-      void fetchAdminKpis().then((data) => {
-        if (data && typeof data === 'object') {
-          setAdminKpis(data as AdminKpisPayload);
-        }
-      });
+      void fetchAdminMetricsSummary().then((data) => setSummary(data ?? null));
+      void fetchAdminMetricsTrips().then((data) => setTripMetrics(data ?? null));
     }
   }, [mockMode]);
 
   const live = mockMode
     ? getLiveOperationsSnapshot()
     : {
-        connectedDrivers: adminKpis?.operations?.activeDrivers ?? 0,
-        activeTrips: 0,
-        pendingRequests: 0,
+        connectedDrivers: summary?.driversOnline ?? 0,
+        activeTrips: summary?.tripsActive ?? 0,
+        pendingRequests: tripMetrics?.pendingRequests ?? 0,
         hotspots: demandZones.filter((z) => z.intensity === 'high').length,
       };
 
   const markers = mockMode ? getOperationsMapMarkers() : [];
-  const hasActiveTrips = markers.some((m) => m.type === 'origin' || m.type === 'destination');
+  const hasActiveTrips = (summary?.tripsActive ?? 0) > 0;
   const filteredDemandZones = useMemo(
     () => filterDemandZones(enrichDemandZones(demandZones), hotspotFilters),
     [demandZones, hotspotFilters]
@@ -75,16 +65,24 @@ export default function AdminOperationsMap() {
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <ScreenHeader title="Mapa operacional" />
         <View style={styles.legend}>
-          <Text style={styles.legendTitle}>Estado en vivo (store)</Text>
+          <Text style={styles.legendTitle}>
+            {mockMode ? 'Estado en vivo (simulación)' : 'Estado en vivo (PostgreSQL)'}
+          </Text>
           <Text style={styles.legendText}>Conductores conectados: {live.connectedDrivers}</Text>
           <Text style={styles.legendText}>Viajes activos: {live.activeTrips}</Text>
-          <Text style={styles.legendText}>Solicitudes pendientes: {live.pendingRequests}</Text>
-          <Text style={styles.legendText}>Hotspots: {filteredDemandZones.length} / {live.hotspots}</Text>
-          <HotspotFilterBar filters={hotspotFilters} onChange={setHotspotFilters} compact />
-          <Text style={styles.legendMeta}>
-            Marcadores: {markers.filter((m) => m.type === 'driver').length} conductores ·{' '}
-            {markers.filter((m) => m.type === 'origin').length} viajes en curso
+          <Text style={styles.legendText}>
+            Solicitudes pendientes: {mockMode ? live.pendingRequests : live.pendingRequests}
           </Text>
+          <Text style={styles.legendText}>
+            Hotspots: {filteredDemandZones.length} / {live.hotspots}
+          </Text>
+          <HotspotFilterBar filters={hotspotFilters} onChange={setHotspotFilters} compact />
+          {!mockMode && (
+            <Text style={styles.legendMeta}>
+              Ofertas enviadas: {summary?.totalOffers ?? 0} · Completados:{' '}
+              {summary?.tripsCompleted ?? 0}
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     </View>

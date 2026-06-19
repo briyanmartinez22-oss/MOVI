@@ -16,6 +16,7 @@ import {
 } from '../utils/normalize';
 import { assertOtpValidForLogin } from './otpService';
 import { canDriverOperate } from './subscription.service';
+import { recordDriverLocation } from './providerEligibility.service';
 import { assignUserRole } from './users.service';
 
 async function issueAuthBundle(userId: string, role: string) {
@@ -343,7 +344,7 @@ export async function registerDriverWithInvite(
           vehicleId: invite.vehicleId,
           name: fullName,
           phone: phoneNumber,
-          status: 'approved',
+          status: 'pending',
           inviteCodeUsed: code.toUpperCase(),
         },
       },
@@ -503,7 +504,11 @@ export async function submitVehicleVerification(vehicleId: string) {
   };
 }
 
-export async function startDriverSession(driverId: string, vehicleId: string) {
+export async function startDriverSession(
+  driverId: string,
+  vehicleId: string,
+  location?: { latitude: number; longitude: number }
+) {
   const driver = await prisma.driver.findUnique({ where: { id: driverId } });
   const vehicle = await prisma.vehicle.findUnique({
     where: { id: vehicleId },
@@ -532,6 +537,9 @@ export async function startDriverSession(driverId: string, vehicleId: string) {
     where: { driverId, disconnectedAt: null },
   });
   if (active) {
+    if (location && Number.isFinite(location.latitude) && Number.isFinite(location.longitude)) {
+      await recordDriverLocation(driverId, driver.userId, location.latitude, location.longitude);
+    }
     return {
       ok: true as const,
       session: {
@@ -551,6 +559,10 @@ export async function startDriverSession(driverId: string, vehicleId: string) {
   const session = await prisma.driverSession.create({
     data: { driverId, vehicleId },
   });
+
+  if (location && Number.isFinite(location.latitude) && Number.isFinite(location.longitude)) {
+    await recordDriverLocation(driverId, driver.userId, location.latitude, location.longitude);
+  }
 
   return {
     ok: true as const,
@@ -649,6 +661,71 @@ export async function setAdminApproval(
 
   const updated = await prisma.driver.update({ where: { id }, data: { status } }).catch(() => null);
   if (!updated) return { ok: false as const, error: 'Conductor no encontrado' };
+  return {
+    ok: true as const,
+    data: {
+      id: updated.id,
+      userId: updated.userId,
+      ownerId: updated.ownerId,
+      vehicleId: updated.vehicleId,
+      name: updated.name,
+      phone: updated.phone,
+      status: updated.status,
+      inviteCodeUsed: updated.inviteCodeUsed ?? undefined,
+      rating: updated.rating,
+      totalTrips: updated.totalTrips,
+      createdAt: updated.createdAt.toISOString(),
+    },
+  };
+}
+
+export async function setAdminSuspension(
+  entity: 'owner' | 'vehicle' | 'driver',
+  id: string
+) {
+  if (entity === 'owner') {
+    const updated = await prisma.owner.update({ where: { id }, data: { status: 'suspended' } }).catch(() => null);
+    if (!updated) return { ok: false as const, error: 'Dueño no encontrado' };
+    return {
+      ok: true as const,
+      data: { ...updated, documents: parseJsonField(updated.documentsJson, {}), createdAt: updated.createdAt.toISOString() },
+    };
+  }
+
+  if (entity === 'vehicle') {
+    const updated = await prisma.vehicle.update({ where: { id }, data: { status: 'suspended' } }).catch(() => null);
+    if (!updated) return { ok: false as const, error: 'Vehículo no encontrado' };
+    return {
+      ok: true as const,
+      data: {
+        vehicleId: updated.id,
+        unitId: updated.unitId,
+        ownerId: updated.ownerId,
+        unitNumber: updated.unitNumber,
+        plateNumber: updated.plateNumber,
+        registrationName: updated.registrationName ?? undefined,
+        associationName: updated.associationName,
+        vehicleType: updated.vehicleType,
+        status: updated.status,
+        documents: parseJsonField(updated.documentsJson, {}),
+        createdAt: updated.createdAt.toISOString(),
+      },
+    };
+  }
+
+  const updated = await prisma.driver.update({ where: { id }, data: { status: 'suspended' } }).catch(() => null);
+  if (!updated) return { ok: false as const, error: 'Conductor no encontrado' };
+
+  const active = await prisma.driverSession.findFirst({
+    where: { driverId: id, disconnectedAt: null },
+  });
+  if (active) {
+    await prisma.driverSession.update({
+      where: { sessionId: active.sessionId },
+      data: { disconnectedAt: new Date() },
+    });
+  }
+
   return {
     ok: true as const,
     data: {

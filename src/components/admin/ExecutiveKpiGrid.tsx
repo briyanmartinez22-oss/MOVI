@@ -1,58 +1,44 @@
-import { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { KpiCard } from '../KpiCard';
 import { getExecutiveKpis } from '../../services/analyticsService';
-import { fetchAdminKpis } from '../../services/mockApi';
-import { useMockApi } from '../../services/api/config';
-import type { ExecutiveKpis } from '../../types/models';
+import { formatRating, useAdminMetrics } from '../../hooks/useAdminMetrics';
 import { spacing } from '../../theme';
 
-function kpisFromApi(data: Record<string, unknown>): ExecutiveKpis {
-  const totals = data.totals as Record<string, number> | undefined;
-  const operations = data.operations as Record<string, number> | undefined;
-  const revenue = data.revenue as Record<string, number> | undefined;
-
-  return {
-    mrr: revenue?.mrr ?? 0,
-    arr: revenue?.arr ?? 0,
-    tripsToday: operations?.tripsToday ?? 0,
-    tripsWeek: 0,
-    tripsMonth: 0,
-    deliveriesToday: operations?.deliveriesToday ?? 0,
-    deliveriesWeek: 0,
-    deliveriesMonth: 0,
-    activeUsers: totals?.users ?? operations?.activeDrivers ?? 0,
-    driversPastDue: operations?.expiredDrivers ?? 0,
-  };
-}
-
 export function ExecutiveKpiGrid() {
-  const [k, setK] = useState<ExecutiveKpis>(() => getExecutiveKpis());
+  const { metrics, mockMode } = useAdminMetrics();
+  const summary = metrics.summary;
 
-  useEffect(() => {
-    if (useMockApi()) {
-      setK(getExecutiveKpis());
-      return;
-    }
-    void fetchAdminKpis().then((data) => {
-      if (data && typeof data === 'object') {
-        setK(kpisFromApi(data as Record<string, unknown>));
-      }
-    });
-  }, []);
+  if (mockMode) {
+    const k = getExecutiveKpis();
+    return (
+      <View style={styles.grid}>
+        <KpiCard label="MRR" value={`$${k.mrr}`} />
+        <KpiCard label="Pasajeros" value={k.activeUsers} />
+        <KpiCard label="Viajes hoy" value={k.tripsToday} />
+        <KpiCard label="Conductores online" value={k.activeUsers} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.grid}>
-      <KpiCard label="MRR" value={`$${k.mrr}`} />
-      <KpiCard label="ARR" value={`$${k.arr}`} />
-      <KpiCard label="Viajes hoy" value={k.tripsToday} />
-      <KpiCard label="Viajes semana" value={k.tripsWeek} />
-      <KpiCard label="Viajes mes" value={k.tripsMonth} />
-      <KpiCard label="Entregas hoy" value={k.deliveriesToday} />
-      <KpiCard label="Entregas semana" value={k.deliveriesWeek} />
-      <KpiCard label="Entregas mes" value={k.deliveriesMonth} />
-      <KpiCard label="Usuarios activos" value={k.activeUsers} />
-      <KpiCard label="Conductores vencidos" value={k.driversPastDue} />
+      <KpiCard label="Pasajeros" value={summary?.totalPassengers ?? 0} />
+      <KpiCard label="Proveedores" value={summary?.totalProviders ?? 0} />
+      <KpiCard label="Pendientes verif." value={summary?.providersPendingVerification ?? 0} />
+      <KpiCard label="Verificados" value={summary?.providersVerified ?? 0} />
+      <KpiCard label="Viajes activos" value={summary?.tripsActive ?? 0} />
+      <KpiCard label="Completados" value={summary?.tripsCompleted ?? 0} />
+      <KpiCard label="Ofertas enviadas" value={summary?.totalOffers ?? 0} />
+      <KpiCard
+        label="Calif. proveedores"
+        value={formatRating(summary?.avgProviderRating ?? 0, summary?.avgProviderRatingCount ?? 0)}
+      />
+      <KpiCard label="Conductores online" value={summary?.driversOnline ?? 0} />
+      <KpiCard
+        label="Ingreso mensual"
+        value={`$${summary?.projectedMonthlyRevenueUsd ?? 0}`}
+        hint={`${summary?.subscriptionsActive ?? 0} suscripciones × $${summary?.monthlySubscriptionFeeUsd ?? 7}`}
+      />
     </View>
   );
 }
