@@ -17,6 +17,11 @@
     "prisma:validate": "prisma validate",
     "prisma:migrate:status": "prisma migrate status",
     "qa": "tsx scripts/qa-e2e.ts",
+    "qa:mvp": "tsx scripts/mvp-qa-e2e.ts",
+    "qa:verification": "tsx scripts/verification-qa-e2e.ts",
+    "qa:admin-metrics": "tsx scripts/admin-metrics-qa-e2e.ts",
+    "qa:integrations": "tsx scripts/integrations-qa-e2e.ts",
+    "qa:scheduled-eligibility": "tsx scripts/scheduled-eligibility-qa-e2e.ts",
     "qa:critical": "tsx scripts/critical-e2e.ts",
     "qa:remote": "tsx scripts/remote-ready-e2e.ts"
   },

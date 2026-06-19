@@ -323,6 +323,9 @@ model VerificationDocument {
   vehicleId    String?
   documentType VerificationDocumentType
   fileUrl      String
+  storageKey   String?
+  mimeType     String?
+  sizeBytes    Int?
   status       VerificationDocumentStatus @default(pending)
   reviewedBy   String?
   reviewNotes  String?
@@ -420,6 +423,17 @@ enum OfferStatus {
   accepted
   rejected
   expired
+  not_selected
+}
+
+enum RequestMode {
+  NOW
+  SCHEDULED
+}
+
+enum ScheduledStatus {
+  open
+  confirmed
 }
 
 model Trip {
@@ -447,6 +461,13 @@ model Trip {
   acceptedOfferId     String?
   driverLat           Float?
   driverLng           Float?
+  requestMode         RequestMode         @default(NOW)
+  scheduledAt         DateTime?
+  offerDeadlineAt     DateTime?
+  pickupLatitude      Float?
+  pickupLongitude     Float?
+  requiredVehicleType VehicleType?
+  scheduledStatus     ScheduledStatus?
   cancelledBy         String?
   createdAt           DateTime            @default(now())
   startedAt           DateTime?
@@ -463,6 +484,9 @@ model Trip {
   @@index([driverId])
   @@index([lifecycleStatus])
   @@index([serviceType])
+  @@index([requestMode])
+  @@index([scheduledStatus])
+  @@index([scheduledAt])
 }
 
 model Delivery {
@@ -515,6 +539,22 @@ model ChatMessage {
   trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([tripId])
+}
+
+model TripRating {
+  id        String   @id @default(cuid())
+  tripId    String
+  raterId   String
+  raterRole String
+  rateeId   String
+  rateeRole String
+  stars     Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@unique([tripId, raterId, raterRole])
+  @@index([tripId])
+  @@index([rateeId])
 }
 
 model LocationPing {

@@ -252,6 +252,64 @@ export function saveCompletedDelivery(
   return mock.saveCompletedDelivery(record);
 }
 
+export async function suspendOwner(ownerId: string): Promise<ApiResponse<Owner>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Owner>(`/admin/owners/${ownerId}/suspend`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al suspender');
+}
+
+export async function suspendVehicle(vehicleId: string): Promise<ApiResponse<Vehicle>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Vehicle>(`/admin/vehicles/${vehicleId}/suspend`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al suspender');
+}
+
+export async function suspendDriver(driverId: string): Promise<ApiResponse<DriverProfileRecord>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<DriverProfileRecord>(`/admin/drivers/${driverId}/suspend`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al suspender');
+}
+
+export async function fetchAdminProviders() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ providers: Record<string, unknown>[] }>('/admin/providers');
+  return res.ok ? res.data?.providers ?? [] : [];
+}
+
+export async function fetchAdminTrips(status?: string) {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ trips: TripRequest[] }>(`/admin/trips${status ? `?status=${status}` : ''}`);
+  return res.ok ? res.data?.trips ?? [] : [];
+}
+
+export async function fetchAdminRequests() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ requests: TripRequest[] }>('/admin/requests');
+  return res.ok ? res.data?.requests ?? [] : [];
+}
+
+export async function submitTripRatingApi(
+  tripId: string,
+  stars: number,
+  comment: string | undefined,
+  raterRole: 'passenger' | 'driver'
+) {
+  if (useMockApi()) return ok({ id: `rating-${Date.now()}`, stars });
+  const res = await apiPost(`/trips/${tripId}/ratings`, { stars, comment, raterRole });
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error al calificar');
+}
+
+export async function uploadDocumentFile(uri: string, fileName?: string): Promise<ApiResponse<string>> {
+  if (useMockApi()) return ok(`mock://${fileName ?? 'doc'}-${Date.now()}`);
+  try {
+    const { uploadFile } = await import('../uploadService');
+    const url = await uploadFile(uri, fileName);
+    return ok(url);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : 'Error al subir');
+  }
+}
+
 export async function approveOwner(ownerId: string): Promise<ApiResponse<Owner>> {
   if (useMockApi()) return mock.approveOwner(ownerId);
   const res = await apiPost<Owner>(`/admin/owners/${ownerId}/approve`);
@@ -450,6 +508,85 @@ export async function fetchAdminKpis() {
   return res.ok ? res.data : null;
 }
 
+export async function fetchAdminMetricsSummary() {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminMetrics').AdminMetricsSummary>(
+    '/admin/metrics/summary'
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchAdminMetricsProviders() {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminMetrics').AdminMetricsProviders>(
+    '/admin/metrics/providers'
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchAdminMetricsTrips() {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminMetrics').AdminMetricsTrips>(
+    '/admin/metrics/trips'
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchAdminMetricsRatings() {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminMetrics').AdminMetricsRatings>(
+    '/admin/metrics/ratings'
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchAdminMetricsSubscriptions() {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminMetrics').AdminMetricsSubscriptions>(
+    '/admin/metrics/subscriptions'
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchAdminMetricsRecentActivity() {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminMetrics').AdminMetricsRecentActivity>(
+    '/admin/metrics/recent-activity'
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchAdminMetricsBundle(): Promise<
+  import('../../types/adminMetrics').AdminMetricsBundle
+> {
+  if (useMockApi()) {
+    return {
+      summary: null,
+      providers: null,
+      trips: null,
+      ratings: null,
+      subscriptions: null,
+      recentActivity: null,
+    };
+  }
+  const [summary, providers, trips, ratings, subscriptions, recentActivity] = await Promise.all([
+    fetchAdminMetricsSummary(),
+    fetchAdminMetricsProviders(),
+    fetchAdminMetricsTrips(),
+    fetchAdminMetricsRatings(),
+    fetchAdminMetricsSubscriptions(),
+    fetchAdminMetricsRecentActivity(),
+  ]);
+  return {
+    summary: summary ?? null,
+    providers: providers ?? null,
+    trips: trips ?? null,
+    ratings: ratings ?? null,
+    subscriptions: subscriptions ?? null,
+    recentActivity: recentActivity ?? null,
+  };
+}
+
 export async function fetchPendingVerifications() {
   if (useMockApi()) {
     const store = mockStore.getStore();
@@ -550,6 +687,9 @@ export async function requestTripOnBackend(
     passengerOfferPrice: trip.passengerOfferPrice,
     passengerName: trip.passengerName,
     cargoDetails: (trip as TripRequest & { cargoDetails?: Record<string, unknown> }).cargoDetails,
+    requestMode: trip.requestMode ?? 'NOW',
+    scheduledAt: trip.scheduledAt ? new Date(trip.scheduledAt).toISOString() : undefined,
+    requiredVehicleType: trip.requiredVehicleType,
   });
   if (res.ok && res.data) {
     realtimeClient.subscribeTrip(res.data.id);
@@ -584,6 +724,18 @@ export async function fetchAvailableTrips(): Promise<ApiResponse<TripRequest[]>>
   if (useMockApi()) return ok([]);
   const res = await apiGet<{ trips: TripRequest[] }>('/trips/available');
   return res.ok ? ok(res.data?.trips ?? []) : fail(res.error ?? 'Error al cargar solicitudes');
+}
+
+export async function fetchScheduledTrips(): Promise<ApiResponse<TripRequest[]>> {
+  if (useMockApi()) return ok([]);
+  const res = await apiGet<{ trips: TripRequest[] }>('/trips/available/scheduled');
+  return res.ok ? ok(res.data?.trips ?? []) : fail(res.error ?? 'Error al cargar programadas');
+}
+
+export async function fetchDriverReservations(): Promise<ApiResponse<TripRequest[]>> {
+  if (useMockApi()) return ok([]);
+  const res = await apiGet<{ trips: TripRequest[] }>('/trips/reservations');
+  return res.ok ? ok(res.data?.trips ?? []) : fail(res.error ?? 'Error al cargar reservas');
 }
 
 export async function fetchChatMessages(

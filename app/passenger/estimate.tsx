@@ -7,7 +7,7 @@ import {
   MapScreen,
   BottomCard,
   PrimaryButton,
-  TripTypeSelector,
+  ServiceCategorySelector,
   VehicleBadge,
 } from '../../src/components';
 import { FormInput } from '../../src/components/FormUI';
@@ -15,6 +15,8 @@ import { HelpButton } from '../../src/components/HelpButton';
 import { useSafeBack } from '../../src/hooks/useSafeBack';
 import { SafeBackFallback } from '../../src/components/SafeBackFallback';
 import { useTrip } from '../../src/context/TripContext';
+import { getPrimaryVehicleType, getServiceCategory } from '../../src/data/serviceCategories';
+import { canShowScheduleOption } from '../../src/utils/tripScheduling';
 import { buildRouteFromPlaces, buildTripMarkers } from '../../src/utils/mapHelpers';
 import { formatDistance } from '../../src/utils/geo';
 import { colors, typography, spacing, radius } from '../../src/theme';
@@ -29,6 +31,8 @@ export default function EstimateScreen() {
     destination,
     tripType,
     setTripType,
+    serviceCategoryId,
+    setServiceCategoryId,
     passengerCount,
     setPassengerCount,
     tripDescription,
@@ -38,6 +42,12 @@ export default function EstimateScreen() {
     removeTripPhoto,
     requestTrip,
     getTripDistanceKm,
+    requestMode,
+    setRequestMode,
+    scheduledAt,
+    setScheduledAt,
+    scheduledNotes,
+    setScheduledNotes,
   } = useTrip();
   const [isPlusTen, setIsPlusTen] = useState(passengerCount > 10);
 
@@ -51,6 +61,9 @@ export default function EstimateScreen() {
   }
 
   const distanceKm = getTripDistanceKm();
+  const category = getServiceCategory(serviceCategoryId);
+  const requiredVehicleType = getPrimaryVehicleType(serviceCategoryId);
+  const showScheduleOption = canShowScheduleOption(requiredVehicleType);
   const markers = buildTripMarkers(origin, destination, true);
   const route = buildRouteFromPlaces(origin, destination);
 
@@ -73,12 +86,22 @@ export default function EstimateScreen() {
   };
 
   const handleRequest = () => {
-    const description = tripDescription.trim();
+    const description = [tripDescription.trim(), scheduledNotes.trim()].filter(Boolean).join(' · ');
     if (!description) {
       Alert.alert('Descripción requerida', 'Describe tu viaje para que el conductor sepa qué esperar.');
       return;
     }
-    requestTrip();
+    if (requestMode === 'SCHEDULED') {
+      if (!scheduledAt || scheduledAt <= new Date()) {
+        Alert.alert('Fecha inválida', 'Selecciona una fecha y hora futura para programar.');
+        return;
+      }
+    }
+    requestTrip(undefined, undefined, {
+      description,
+      requestMode,
+      scheduledAt: scheduledAt?.getTime(),
+    });
     router.push('/passenger/matching');
   };
 
@@ -102,7 +125,7 @@ export default function EstimateScreen() {
       <View style={styles.bottomArea}>
         <BottomCard expanded>
           <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-            <VehicleBadge type="mototaxi" />
+            <VehicleBadge type={getPrimaryVehicleType(serviceCategoryId)} />
 
             <View style={styles.routeInfo}>
               <View style={styles.routeRow}>
@@ -181,15 +204,69 @@ export default function EstimateScreen() {
               ))}
             </View>
 
-            <Text style={styles.sectionLabel}>Tipo de viaje</Text>
-            <TripTypeSelector value={tripType} onChange={setTripType} />
+            <ServiceCategorySelector
+              categoryId={serviceCategoryId}
+              tripType={tripType}
+              onCategoryChange={setServiceCategoryId}
+              onTripTypeChange={setTripType}
+            />
+
+            {showScheduleOption ? (
+              <>
+                <Text style={styles.sectionLabel}>Cuándo</Text>
+                <View style={styles.passengerRow}>
+                  <TouchableOpacity
+                    style={[styles.passengerChip, requestMode === 'NOW' && styles.passengerChipActive]}
+                    onPress={() => setRequestMode('NOW')}
+                  >
+                    <Text style={[styles.passengerChipText, requestMode === 'NOW' && styles.passengerChipTextActive]}>
+                      Ahora
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.passengerChip, requestMode === 'SCHEDULED' && styles.passengerChipActive]}
+                    onPress={() => setRequestMode('SCHEDULED')}
+                  >
+                    <Text
+                      style={[
+                        styles.passengerChipText,
+                        requestMode === 'SCHEDULED' && styles.passengerChipTextActive,
+                      ]}
+                    >
+                      Programar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {requestMode === 'SCHEDULED' ? (
+                  <>
+                    <FormInput
+                      label="Fecha y hora (ISO)"
+                      value={scheduledAt ? scheduledAt.toISOString().slice(0, 16) : ''}
+                      onChangeText={(value) => {
+                        const parsed = new Date(value);
+                        setScheduledAt(Number.isNaN(parsed.getTime()) ? null : parsed);
+                      }}
+                      placeholder="2026-06-20T09:00"
+                      hint="Formato: YYYY-MM-DDTHH:mm"
+                    />
+                    <FormInput
+                      label="Notas del viaje / carga"
+                      value={scheduledNotes}
+                      onChangeText={setScheduledNotes}
+                      placeholder="Ej: 15 pasajeros, equipaje, punto de encuentro..."
+                      multiline
+                    />
+                  </>
+                ) : null}
+              </>
+            ) : null}
 
             <Text style={styles.note}>
               Los conductores enviarán sus ofertas. Tú eliges cuál aceptar.
             </Text>
 
             <PrimaryButton
-              title="Solicitar Mototaxi"
+              title={category.requestButtonLabel}
               onPress={handleRequest}
               style={styles.confirmBtn}
             />

@@ -1,6 +1,13 @@
-import type { ChatMessage, ServiceType, Trip, TripLifecycleStatus, TripOffer } from '@prisma/client';
+import type { ChatMessage, ServiceType, Trip, TripLifecycleStatus, TripOffer, VehicleType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseJsonField, stringifyJsonField } from '../utils/normalize';
+import { notifyUser, TRIP_PUSH_EVENTS } from './notification.service';
+import {
+  assertProviderCanOffer,
+  findEligibleProviders,
+  isSchedulableVehicleType,
+  normalizeVehicleType,
+} from './providerEligibility.service';
 import { canDriverOperate } from './subscription.service';
 
 export const MIN_OFFER_PRICE = 0.5;
@@ -77,6 +84,14 @@ async function buildDriverProfile(driverId: string) {
   });
   if (!driver) return null;
 
+  const lastPing = await prisma.locationPing.findFirst({
+    where: { driverId },
+    orderBy: { createdAt: 'desc' },
+  });
+  const coords = lastPing
+    ? { latitude: lastPing.latitude, longitude: lastPing.longitude }
+    : { latitude: 13.6929, longitude: -89.2182 };
+
   return {
     id: driver.id,
     name: driver.name,
@@ -85,8 +100,17 @@ async function buildDriverProfile(driverId: string) {
     association: driver.vehicle.associationName,
     rating: driver.rating,
     vehicleType: driver.vehicle.vehicleType,
-    coordinates: { latitude: 13.6929, longitude: -89.2182 },
+    coordinates: coords,
   };
+}
+
+async function isTripParticipant(tripId: string, userId: string): Promise<boolean> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+  if (!trip) return false;
+  if (trip.passengerId === userId) return true;
+  if (!trip.driverId) return false;
+  const driver = await prisma.driver.findUnique({ where: { id: trip.driverId } });
+  return driver?.userId === userId;
 }
 
 export async function serializeTrip(tripId: string) {
@@ -146,6 +170,13 @@ export async function serializeTrip(tripId: string) {
     serviceType: trip.serviceType ?? undefined,
     cargoDetails: parseJsonField(trip.cargoDetailsJson, {}),
     requestType: trip.requestType ?? undefined,
+    requestMode: trip.requestMode,
+    scheduledAt: trip.scheduledAt?.getTime(),
+    offerDeadlineAt: trip.offerDeadlineAt?.getTime(),
+    requiredVehicleType: trip.requiredVehicleType ?? undefined,
+    scheduledStatus: trip.scheduledStatus ?? undefined,
+    pickupLatitude: trip.pickupLatitude ?? undefined,
+    pickupLongitude: trip.pickupLongitude ?? undefined,
     driverLocation:
       trip.driverLat != null && trip.driverLng != null
         ? { latitude: trip.driverLat, longitude: trip.driverLng }
@@ -174,10 +205,38 @@ export async function createTripRequest(
     businessName?: string;
     passengerOfferPrice?: number;
     cargoDetails?: Record<string, unknown>;
+    requestMode?: 'NOW' | 'SCHEDULED';
+    scheduledAt?: string | Date;
+    offerDeadlineAt?: string | Date;
+    requiredVehicleType?: string;
   }
-) {
+): Promise<
+  | { ok: true; trip: Awaited<ReturnType<typeof serializeTrip>> }
+  | { ok: false; error: string }
+> {
+  const requestMode = data.requestMode ?? 'NOW';
+  const requiredVehicleType = normalizeVehicleType(data.requiredVehicleType ?? 'mototaxi');
+
+  if (requestMode === 'SCHEDULED') {
+    if (!isSchedulableVehicleType(requiredVehicleType)) {
+      return {
+        ok: false,
+        error: 'Solo microbús, pickup y camión admiten solicitudes programadas.',
+      };
+    }
+    if (!data.scheduledAt) {
+      return { ok: false, error: 'scheduledAt es obligatorio para solicitudes programadas.' };
+    }
+    const scheduledAt = new Date(data.scheduledAt);
+    if (Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) {
+      return { ok: false, error: 'La fecha programada debe ser futura.' };
+    }
+  }
+
   const distanceKm = haversineKm(data.origin.coordinates, data.destination.coordinates);
   const serviceType = mapServiceType(data.serviceType);
+  const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : undefined;
+  const offerDeadlineAt = data.offerDeadlineAt ? new Date(data.offerDeadlineAt) : undefined;
 
   const trip = await prisma.trip.create({
     data: {
@@ -188,7 +247,7 @@ export async function createTripRequest(
       tripType: data.tripType,
       kind: data.kind ?? 'ride',
       distanceKm,
-      status: 'searching',
+      status: requestMode === 'SCHEDULED' ? 'searching' : 'searching',
       lifecycleStatus: 'requested',
       passengerCount: Math.max(1, data.passengerCount ?? 1),
       description: data.description?.trim() || 'Viaje MOVI',
@@ -200,6 +259,13 @@ export async function createTripRequest(
       businessId: data.businessId,
       businessName: data.businessName,
       passengerOfferPrice: data.passengerOfferPrice,
+      requestMode,
+      scheduledAt,
+      offerDeadlineAt,
+      pickupLatitude: data.origin.coordinates.latitude,
+      pickupLongitude: data.origin.coordinates.longitude,
+      requiredVehicleType: requiredVehicleType as VehicleType,
+      scheduledStatus: requestMode === 'SCHEDULED' ? 'open' : null,
     },
   });
 
@@ -213,7 +279,30 @@ export async function createTripRequest(
     });
   }
 
-  return serializeTrip(trip.id);
+  void notifyEligibleDriversNewRequest(trip.id, passengerName).catch(() => undefined);
+
+  const serialized = await serializeTrip(trip.id);
+  if (!serialized) return { ok: false, error: 'No se pudo serializar el viaje.' };
+  return { ok: true, trip: serialized };
+}
+
+async function notifyEligibleDriversNewRequest(tripId: string, passengerName: string) {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+  if (!trip) return;
+
+  const eligible = await findEligibleProviders(trip);
+  await Promise.all(
+    eligible.map(({ userId }) =>
+      notifyUser(
+        userId,
+        'trip_update',
+        trip.requestMode === 'SCHEDULED' ? 'Nueva reserva programada' : 'Nueva solicitud',
+        `${passengerName} solicita un servicio${trip.requestMode === 'SCHEDULED' ? ' programado' : ' cerca de ti'}.`,
+        TRIP_PUSH_EVENTS.newRequest,
+        { tripId }
+      )
+    )
+  );
 }
 
 function mapServiceType(value?: string): ServiceType | undefined {
@@ -247,6 +336,11 @@ export async function createTripOffer(
   });
   if (!driver || driver.status !== 'approved') {
     return { ok: false as const, error: 'Conductor no autorizado.' };
+  }
+
+  const eligibility = await assertProviderCanOffer(trip, driver);
+  if (!eligibility.ok) {
+    return { ok: false as const, error: eligibility.error };
   }
 
   const subCheck = await canDriverOperate(driver.id);
@@ -299,6 +393,14 @@ export async function createTripOffer(
   }
 
   const serialized = await serializeTrip(tripId);
+  void notifyUser(
+    trip.passengerId,
+    'offer_received',
+    'Nueva oferta',
+    `${driver.name} envió una oferta de $${data.price.toFixed(2)}.`,
+    TRIP_PUSH_EVENTS.newOffer,
+    { tripId, offerId: offer.id }
+  ).catch(() => undefined);
   return { ok: true as const, offer, trip: serialized };
 }
 
@@ -317,9 +419,13 @@ export async function acceptTripOffer(tripId: string, offerId: string, passenger
     return { ok: false as const, error: 'La oferta ya no está disponible.' };
   }
 
+  if (trip.scheduledStatus === 'confirmed') {
+    return { ok: false as const, error: 'La reserva programada ya fue confirmada.' };
+  }
+
   await prisma.tripOffer.updateMany({
     where: { tripId, id: { not: offerId }, status: 'pending' },
-    data: { status: 'rejected' },
+    data: { status: trip.requestMode === 'SCHEDULED' ? 'not_selected' : 'rejected' },
   });
 
   await prisma.tripOffer.update({
@@ -334,10 +440,25 @@ export async function acceptTripOffer(tripId: string, offerId: string, passenger
       driverId: offer.driverId,
       lifecycleStatus: 'accepted',
       status: lifecycleToStatus('accepted'),
+      scheduledStatus: trip.requestMode === 'SCHEDULED' ? 'confirmed' : trip.scheduledStatus,
     },
   });
 
   const serialized = await serializeTrip(tripId);
+  const driverUser = await prisma.driver.findUnique({
+    where: { id: offer.driverId },
+    select: { userId: true, name: true },
+  });
+  if (driverUser?.userId) {
+    void notifyUser(
+      driverUser.userId,
+      'trip_update',
+      'Oferta aceptada',
+      'Tu oferta fue aceptada. Dirígete al punto de recogida.',
+      TRIP_PUSH_EVENTS.offerAccepted,
+      { tripId, offerId }
+    ).catch(() => undefined);
+  }
   return { ok: true as const, trip: serialized };
 }
 
@@ -378,11 +499,65 @@ export async function advanceTripLifecycle(tripId: string, lifecycleStatus: Trip
   if (lifecycleStatus === 'trip_completed') {
     updates.completedAt = new Date();
     await persistTripHistory(tripId);
+    if (trip.driverId) {
+      await prisma.driver.update({
+        where: { id: trip.driverId },
+        data: { totalTrips: { increment: 1 } },
+      });
+    }
   }
 
   await prisma.trip.update({ where: { id: tripId }, data: updates });
   const serialized = await serializeTrip(tripId);
+  void dispatchLifecyclePush(trip, lifecycleStatus, driver?.userId).catch(() => undefined);
   return { ok: true as const, trip: serialized };
+}
+
+async function dispatchLifecyclePush(
+  trip: Trip,
+  lifecycleStatus: TripLifecycleStatus,
+  driverUserId?: string
+) {
+  if (lifecycleStatus === 'driver_arrived' && driverUserId) {
+    await notifyUser(
+      trip.passengerId,
+      'trip_update',
+      'Conductor llegó',
+      'Tu conductor está en el punto de recogida.',
+      TRIP_PUSH_EVENTS.driverArrived,
+      { tripId: trip.id }
+    );
+  }
+  if (lifecycleStatus === 'trip_started') {
+    await notifyUser(
+      trip.passengerId,
+      'trip_update',
+      'Servicio iniciado',
+      'Tu viaje ha comenzado.',
+      TRIP_PUSH_EVENTS.tripStarted,
+      { tripId: trip.id }
+    );
+  }
+  if (lifecycleStatus === 'trip_completed') {
+    await notifyUser(
+      trip.passengerId,
+      'trip_update',
+      'Servicio completado',
+      'Califica tu experiencia en MOVI.',
+      TRIP_PUSH_EVENTS.tripCompleted,
+      { tripId: trip.id }
+    );
+    if (driverUserId) {
+      await notifyUser(
+        driverUserId,
+        'trip_update',
+        'Servicio completado',
+        'El viaje finalizó correctamente.',
+        TRIP_PUSH_EVENTS.tripCompleted,
+        { tripId: trip.id }
+      );
+    }
+  }
 }
 
 export async function cancelTrip(
@@ -449,9 +624,27 @@ export async function addChatMessage(
   const trip = await prisma.trip.findUnique({ where: { id: tripId } });
   if (!trip) return { ok: false as const, error: 'Viaje no encontrado' };
 
+  const allowed = await isTripParticipant(tripId, senderId);
+  if (!allowed) return { ok: false as const, error: 'No autorizado para este chat.' };
+
   const message = await prisma.chatMessage.create({
     data: { tripId, senderId, senderRole, senderName, text },
   });
+
+  const recipientId =
+    senderId === trip.passengerId
+      ? (await prisma.driver.findUnique({ where: { id: trip.driverId ?? '__none__' } }))?.userId
+      : trip.passengerId;
+  if (recipientId) {
+    void notifyUser(
+      recipientId,
+      'trip_update',
+      'Nuevo mensaje',
+      `${senderName}: ${text.slice(0, 80)}`,
+      TRIP_PUSH_EVENTS.newMessage,
+      { tripId }
+    ).catch(() => undefined);
+  }
 
   return {
     ok: true as const,
@@ -496,6 +689,103 @@ export async function getTripHistory(userId: string, role: string) {
   return Promise.all(trips.map((t: Trip) => serializeTrip(t.id)));
 }
 
+export async function getAvailableTripsForDriver(driverUserId: string) {
+  return getNearbyTripsForDriver(driverUserId);
+}
+
+export async function getNearbyTripsForDriver(driverUserId: string) {
+  const driver = await prisma.driver.findUnique({
+    where: { userId: driverUserId },
+    include: { vehicle: true },
+  });
+  if (!driver) return [];
+
+  const trips = await prisma.trip.findMany({
+    where: {
+      requestMode: 'NOW',
+      lifecycleStatus: { in: ['requested', 'offered'] },
+      status: { in: ['searching', 'offers'] },
+      passengerId: { not: driverUserId },
+      scheduledStatus: null,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+  });
+
+  const available = [];
+  for (const trip of trips) {
+    const eligible = await findEligibleProviders(trip);
+    if (!eligible.some((e) => e.driverId === driver.id)) continue;
+
+    const existing = await prisma.tripOffer.findFirst({
+      where: { tripId: trip.id, driverId: driver.id, status: 'pending' },
+    });
+    if (existing) continue;
+
+    const serialized = await serializeTrip(trip.id);
+    if (serialized) available.push(serialized);
+  }
+  return available;
+}
+
+export async function getScheduledTripsForDriver(driverUserId: string) {
+  const driver = await prisma.driver.findUnique({
+    where: { userId: driverUserId },
+    include: { vehicle: true },
+  });
+  if (!driver) return [];
+
+  const trips = await prisma.trip.findMany({
+    where: {
+      requestMode: 'SCHEDULED',
+      scheduledStatus: 'open',
+      lifecycleStatus: { in: ['requested', 'offered'] },
+      passengerId: { not: driverUserId },
+    },
+    orderBy: { scheduledAt: 'asc' },
+    take: 30,
+  });
+
+  const available = [];
+  for (const trip of trips) {
+    const eligible = await findEligibleProviders(trip);
+    if (!eligible.some((e) => e.driverId === driver.id)) continue;
+
+    const existing = await prisma.tripOffer.findFirst({
+      where: { tripId: trip.id, driverId: driver.id, status: 'pending' },
+    });
+    if (existing) continue;
+
+    const serialized = await serializeTrip(trip.id);
+    if (serialized) available.push(serialized);
+  }
+  return available;
+}
+
+export async function getDriverReservations(driverUserId: string) {
+  const driver = await prisma.driver.findUnique({ where: { userId: driverUserId } });
+  if (!driver) return [];
+
+  const trips = await prisma.trip.findMany({
+    where: {
+      requestMode: 'SCHEDULED',
+      scheduledStatus: 'confirmed',
+      driverId: driver.id,
+      lifecycleStatus: { in: ['accepted', 'driver_arriving', 'driver_arrived', 'trip_started'] },
+    },
+    orderBy: { scheduledAt: 'asc' },
+    take: 30,
+  });
+
+  const reservations = [];
+  for (const trip of trips) {
+    const serialized = await serializeTrip(trip.id);
+    if (serialized) reservations.push(serialized);
+  }
+  return reservations;
+}
+
+/** @deprecated use getNearbyTripsForDriver via findEligibleProviders */
 export async function getEligibleDriverUserIds(): Promise<string[]> {
   const activeSessions = await prisma.driverSession.findMany({
     where: { disconnectedAt: null },
@@ -518,45 +808,12 @@ export async function getEligibleDriverUserIds(): Promise<string[]> {
   return [...new Set(userIds)];
 }
 
-export async function getAvailableTripsForDriver(driverUserId: string) {
-  const driver = await prisma.driver.findUnique({
-    where: { userId: driverUserId },
-    include: { vehicle: true },
-  });
-  if (!driver || driver.status !== 'approved') return [];
-  if (!driver.vehicle || driver.vehicle.status !== 'approved') return [];
-
-  const subCheck = await canDriverOperate(driver.id);
-  if (!subCheck.ok) return [];
-
-  const activeSession = await prisma.driverSession.findFirst({
-    where: { driverId: driver.id, disconnectedAt: null },
-  });
-  if (!activeSession) return [];
-
-  const trips = await prisma.trip.findMany({
-    where: {
-      lifecycleStatus: { in: ['requested', 'offered'] },
-      status: { in: ['searching', 'offers'] },
-      passengerId: { not: driverUserId },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-  });
-
-  const available = [];
-  for (const trip of trips) {
-    const existing = await prisma.tripOffer.findFirst({
-      where: { tripId: trip.id, driverId: driver.id, status: 'pending' },
-    });
-    if (existing) continue;
-    const serialized = await serializeTrip(trip.id);
-    if (serialized) available.push(serialized);
+export async function getChatMessages(tripId: string, userId?: string) {
+  if (userId) {
+    const allowed = await isTripParticipant(tripId, userId);
+    if (!allowed) return [];
   }
-  return available;
-}
 
-export async function getChatMessages(tripId: string) {
   const messages = await prisma.chatMessage.findMany({
     where: { tripId },
     orderBy: { createdAt: 'asc' },

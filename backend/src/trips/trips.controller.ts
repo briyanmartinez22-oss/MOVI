@@ -25,6 +25,8 @@ import {
   completeTripRecord,
   getTripHistory,
   getAvailableTripsForDriver,
+  getScheduledTripsForDriver,
+  getDriverReservations,
 } from '../services/tripService';
 
 const placeSchema = z.object({
@@ -35,6 +37,18 @@ const placeSchema = z.object({
     longitude: z.number(),
   }),
 });
+
+const vehicleTypeSchema = z.enum([
+  'mototaxi',
+  'qute',
+  'motocicleta',
+  'sedan',
+  'camioneta',
+  'pickup',
+  'camion',
+  'microbus',
+  'tuk_tuk_red',
+]);
 
 @Controller('trips')
 export class TripsController {
@@ -67,6 +81,10 @@ export class TripsController {
         passengerOfferPrice: z.number().optional(),
         passengerName: z.string().optional(),
         cargoDetails: z.record(z.unknown()).optional(),
+        requestMode: z.enum(['NOW', 'SCHEDULED']).optional(),
+        scheduledAt: z.string().optional(),
+        offerDeadlineAt: z.string().optional(),
+        requiredVehicleType: vehicleTypeSchema.optional(),
       })
       .safeParse(body);
     if (!parsed.success) {
@@ -78,23 +96,37 @@ export class TripsController {
       throw new HttpException('Usuario no encontrado', HttpStatus.NOT_FOUND);
     }
 
-    const trip = await createTripRequest(
+    const result = await createTripRequest(
       auth.userId,
       parsed.data.passengerName ?? user.fullName,
       parsed.data
     );
-    if (!trip) {
-      throw new HttpException('No se pudo crear el viaje', HttpStatus.BAD_REQUEST);
+    if (!result.ok) {
+      throw new HttpException(result.error, HttpStatus.BAD_REQUEST);
     }
 
-    await this.tripHub.broadcastNewTripRequest(trip.id);
-    return trip;
+    await this.tripHub.broadcastNewTripRequest(result.trip!.id);
+    return result.trip;
   }
 
   @Get('available')
   @UseGuards(JwtAuthGuard)
   async available(@AuthUser() auth: AuthPayload) {
     const trips = await getAvailableTripsForDriver(auth.userId);
+    return { trips };
+  }
+
+  @Get('available/scheduled')
+  @UseGuards(JwtAuthGuard)
+  async availableScheduled(@AuthUser() auth: AuthPayload) {
+    const trips = await getScheduledTripsForDriver(auth.userId);
+    return { trips };
+  }
+
+  @Get('reservations')
+  @UseGuards(JwtAuthGuard)
+  async reservations(@AuthUser() auth: AuthPayload) {
+    const trips = await getDriverReservations(auth.userId);
     return { trips };
   }
 

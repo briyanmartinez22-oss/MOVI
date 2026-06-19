@@ -29,7 +29,15 @@ import {
 } from '../types';
 import { DriverSession } from '../types/models';
 import { calculateDistanceKm, calculateEtaMinutes } from '../utils/geo';
-import { clampPrice, getMinPrice } from '../utils/pricing';
+import { clampPrice } from '../utils/pricing';
+import {
+  DEFAULT_SERVICE_CATEGORY_ID,
+  getPrimaryVehicleType,
+  getServiceCategory,
+  resolveTripTypeForCategory,
+  type ServiceCategoryId,
+} from '../data/serviceCategories';
+import type { RequestMode } from '../utils/tripScheduling';
 import * as mockApi from '../services/mockApi';
 import { useMockApi } from '../services/api/config';
 import { requestTripOnBackend, cancelTripOnBackend, submitTripOffer, acceptTripOffer, advanceTripOnBackend, fetchAvailableTrips } from '../services/api';
@@ -62,6 +70,14 @@ interface TripContextValue {
   setServiceType: (type: ServiceType) => void;
   requestType: ServiceRequestType;
   setRequestType: (type: ServiceRequestType) => void;
+  serviceCategoryId: ServiceCategoryId;
+  setServiceCategoryId: (id: ServiceCategoryId) => void;
+  requestMode: RequestMode;
+  setRequestMode: (mode: RequestMode) => void;
+  scheduledAt: Date | null;
+  setScheduledAt: (date: Date | null) => void;
+  scheduledNotes: string;
+  setScheduledNotes: (notes: string) => void;
   cargoDetails: CargoDetails | undefined;
   setCargoDetails: (details: CargoDetails | undefined) => void;
   activeTrip: TripRequest | null;
@@ -86,7 +102,11 @@ interface TripContextValue {
       photoUris?: string[];
       serviceType?: ServiceType;
       requestType?: ServiceRequestType;
+      serviceCategoryId?: ServiceCategoryId;
       cargoDetails?: CargoDetails;
+      requestMode?: RequestMode;
+      scheduledAt?: number;
+      requiredVehicleType?: string;
     }
   ) => TripRequest;
   simulateIncomingOffers: () => void;
@@ -138,6 +158,11 @@ export function TripProvider({ children }: { children: ReactNode }) {
   const [tripPhotoUris, setTripPhotoUris] = useState<string[]>([]);
   const [serviceType, setServiceType] = useState<ServiceType>('movi_ride');
   const [requestType, setRequestType] = useState<ServiceRequestType>('viaje');
+  const [serviceCategoryId, setServiceCategoryIdState] =
+    useState<ServiceCategoryId>(DEFAULT_SERVICE_CATEGORY_ID);
+  const [requestMode, setRequestMode] = useState<RequestMode>('NOW');
+  const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  const [scheduledNotes, setScheduledNotes] = useState('');
   const [cargoDetails, setCargoDetails] = useState<CargoDetails | undefined>();
   const [activeTrip, setActiveTrip] = useState<TripRequest | null>(null);
   const [activeSession, setActiveSession] = useState<DriverSession | null>(null);
@@ -149,6 +174,19 @@ export function TripProvider({ children }: { children: ReactNode }) {
   const refreshDriverSession = useCallback((driverId: string) => {
     setActiveSession(getActiveSession(driverId) ?? null);
   }, []);
+
+  const setServiceCategoryId = useCallback((id: ServiceCategoryId) => {
+    const category = getServiceCategory(id);
+    setServiceCategoryIdState(id);
+    setServiceType(category.serviceType);
+    setRequestType(category.requestType);
+    setTripType((current) => resolveTripTypeForCategory(id, current));
+    const vehicleType = getPrimaryVehicleType(id);
+    if (requestMode === 'SCHEDULED' && !['microbus', 'pickup', 'camion'].includes(vehicleType)) {
+      setRequestMode('NOW');
+      setScheduledAt(null);
+    }
+  }, [requestMode]);
 
   const requestTrip = useCallback(
     (
@@ -164,14 +202,23 @@ export function TripProvider({ children }: { children: ReactNode }) {
         photoUris?: string[];
         serviceType?: ServiceType;
         requestType?: ServiceRequestType;
+        serviceCategoryId?: ServiceCategoryId;
         cargoDetails?: CargoDetails;
+        requestMode?: RequestMode;
+        scheduledAt?: number;
+        requiredVehicleType?: string;
       }
     ) => {
       if (!destination) throw new Error('Destination is required');
+      const effectiveTripType = resolveTripTypeForCategory(serviceCategoryId, tripType);
+      const requiredVehicleType = getPrimaryVehicleType(
+        options?.serviceCategoryId ?? serviceCategoryId
+      );
+      const effectiveRequestMode = options?.requestMode ?? requestMode;
       const trip = createTripRequest(
         origin,
         destination,
-        tripType,
+        effectiveTripType,
         passengerId ?? user?.userId,
         passengerName ?? user?.fullName ?? 'Pasajero',
         {
@@ -182,7 +229,11 @@ export function TripProvider({ children }: { children: ReactNode }) {
           photoUris: options?.photoUris ?? tripPhotoUris,
           serviceType: options?.serviceType ?? serviceType,
           requestType: options?.requestType ?? requestType,
+          serviceCategoryId: options?.serviceCategoryId ?? serviceCategoryId,
           cargoDetails: options?.cargoDetails ?? cargoDetails,
+          requestMode: effectiveRequestMode,
+          scheduledAt: options?.scheduledAt ?? scheduledAt?.getTime(),
+          requiredVehicleType: options?.requiredVehicleType ?? requiredVehicleType,
         }
       );
       setActiveTrip(trip);
@@ -209,7 +260,11 @@ export function TripProvider({ children }: { children: ReactNode }) {
       tripPhotoUris,
       serviceType,
       requestType,
+      serviceCategoryId,
       cargoDetails,
+      requestMode,
+      scheduledAt,
+      scheduledNotes,
       user,
     ]
   );
@@ -297,7 +352,7 @@ export function TripProvider({ children }: { children: ReactNode }) {
   const updatePassengerOfferPrice = useCallback((price: number) => {
     setActiveTrip((current) => {
       if (!current) return current;
-      const nextPrice = clampPrice(price, current.tripType);
+      const nextPrice = clampPrice(price, current.tripType, current.serviceCategoryId);
       return { ...current, passengerOfferPrice: nextPrice };
     });
   }, []);
@@ -417,6 +472,10 @@ export function TripProvider({ children }: { children: ReactNode }) {
         status: 'trip_completed',
         completedAt: new Date().toISOString(),
       });
+
+      if (!useMockApi()) {
+        void advanceTripOnBackend(current.id, 'trip_completed');
+      }
 
       NotificationTemplates.tripCompleted();
       if (current.kind === 'delivery' && current.businessId && current.acceptedOffer) {
@@ -703,6 +762,14 @@ export function TripProvider({ children }: { children: ReactNode }) {
       setServiceType,
       requestType,
       setRequestType,
+      serviceCategoryId,
+      setServiceCategoryId,
+      requestMode,
+      setRequestMode,
+      scheduledAt,
+      setScheduledAt,
+      scheduledNotes,
+      setScheduledNotes,
       cargoDetails,
       setCargoDetails,
       activeTrip,
@@ -738,6 +805,11 @@ export function TripProvider({ children }: { children: ReactNode }) {
       tripPhotoUris,
       serviceType,
       requestType,
+      serviceCategoryId,
+      setServiceCategoryId,
+      requestMode,
+      scheduledAt,
+      scheduledNotes,
       cargoDetails,
       addTripPhoto,
       removeTripPhoto,

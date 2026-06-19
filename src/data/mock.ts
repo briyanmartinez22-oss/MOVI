@@ -11,9 +11,16 @@ import {
   TripRequest,
   TripType,
 } from '../types';
-import { DriverProfileRecord, Vehicle } from '../types/models';
+import { DriverProfileRecord, Vehicle, VehicleType } from '../types/models';
 import { calculateDistanceKm, calculateEtaMinutes } from '../utils/geo';
-import { getMinPrice } from '../utils/pricing';
+import { getMinPriceForTrip } from '../utils/pricing';
+import {
+  DEFAULT_SERVICE_CATEGORY_ID,
+  getPrimaryVehicleType,
+  isVehicleCompatibleWithCategory,
+  type ServiceCategoryId,
+} from './serviceCategories';
+import type { RequestMode } from '../utils/tripScheduling';
 
 export const EL_SALVADOR_CENTER: Coordinates = {
   latitude: 13.6929,
@@ -80,6 +87,7 @@ export const mockDrivers: Driver[] = [
     rating: 4.9,
     coordinates: { latitude: 13.6965, longitude: -89.2155 },
     photoUrl: 'https://i.pravatar.cc/150?u=movi-driver-d1',
+    vehicleType: 'mototaxi',
   },
   {
     id: 'd2',
@@ -90,6 +98,7 @@ export const mockDrivers: Driver[] = [
     rating: 4.8,
     coordinates: { latitude: 13.6888, longitude: -89.2210 },
     photoUrl: 'https://i.pravatar.cc/150?u=movi-driver-d2',
+    vehicleType: 'mototaxi',
   },
   {
     id: 'd3',
@@ -100,6 +109,7 @@ export const mockDrivers: Driver[] = [
     rating: 4.7,
     coordinates: { latitude: 13.7042, longitude: -89.2108 },
     photoUrl: 'https://i.pravatar.cc/150?u=movi-driver-d3',
+    vehicleType: 'sedan',
   },
   {
     id: 'd4',
@@ -110,6 +120,7 @@ export const mockDrivers: Driver[] = [
     rating: 4.6,
     coordinates: { latitude: 13.6901, longitude: -89.2055 },
     photoUrl: 'https://i.pravatar.cc/150?u=movi-driver-d4',
+    vehicleType: 'pickup',
   },
 ];
 
@@ -154,6 +165,10 @@ export function createTripRequest(
     serviceType?: ServiceType;
     requestType?: ServiceRequestType;
     cargoDetails?: CargoDetails;
+    serviceCategoryId?: ServiceCategoryId;
+    requestMode?: RequestMode;
+    scheduledAt?: number;
+    requiredVehicleType?: string;
   }
 ): TripRequest {
   const distanceKm = calculateDistanceKm(origin.coordinates, destination.coordinates);
@@ -177,23 +192,35 @@ export function createTripRequest(
     offers: [],
     acceptedOffer: null,
     passengerCount,
-    passengerOfferPrice: getMinPrice(tripType),
+    passengerOfferPrice: getMinPriceForTrip(
+      tripType,
+      options?.serviceCategoryId ?? DEFAULT_SERVICE_CATEGORY_ID
+    ),
     description,
     photoUris: options?.photoUris?.length ? options.photoUris : undefined,
     serviceType: options?.serviceType ?? 'movi_ride',
     requestType: options?.requestType ?? 'viaje',
     cargoDetails: options?.cargoDetails,
+    serviceCategoryId: options?.serviceCategoryId ?? DEFAULT_SERVICE_CATEGORY_ID,
+    requestMode: options?.requestMode ?? 'NOW',
+    scheduledAt: options?.scheduledAt,
+    requiredVehicleType: options?.requiredVehicleType ?? getPrimaryVehicleType(options?.serviceCategoryId ?? DEFAULT_SERVICE_CATEGORY_ID),
     createdAt: Date.now(),
   };
 }
 
 export function generateMockOffers(trip: TripRequest): Offer[] {
   const basePrices = [2.0, 2.5, 3.0, 3.5];
+  const categoryId = trip.serviceCategoryId ?? DEFAULT_SERVICE_CATEGORY_ID;
+  const compatibleDrivers = mockDrivers.filter((driver) =>
+    isVehicleCompatibleWithCategory(driver.vehicleType as VehicleType | undefined, categoryId)
+  );
+  const drivers = compatibleDrivers.length > 0 ? compatibleDrivers : mockDrivers;
 
-  return mockDrivers.slice(0, 4).map((driver, index) => {
+  return drivers.slice(0, 4).map((driver, index) => {
     const distanceToPickup = calculateDistanceKm(driver.coordinates, trip.origin.coordinates);
     const etaMinutes = calculateEtaMinutes(distanceToPickup);
-    const minPrice = getMinPrice(trip.tripType);
+    const minPrice = getMinPriceForTrip(trip.tripType, categoryId);
     const price = Math.max(minPrice, basePrices[index] ?? minPrice);
 
     return {

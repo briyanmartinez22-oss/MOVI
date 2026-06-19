@@ -53,6 +53,7 @@ import {
   HotspotFilterState,
 } from '../../src/utils/hotspotFilters';
 import { useMockApi } from '../../src/services/api/config';
+import { fetchScheduledTrips, fetchDriverReservations } from '../../src/services/api';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const DRIVER_REQUEST_STATUS_LABELS: Record<string, string> = {
@@ -90,6 +91,8 @@ export default function DriverHome() {
     vehicleType: 'all',
   });
   const [demandZones, setDemandZones] = useState<DemandZone[]>([]);
+  const [scheduledTripsCount, setScheduledTripsCount] = useState(0);
+  const [reservationsCount, setReservationsCount] = useState(0);
   const notifiedTripIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +117,21 @@ export default function DriverHome() {
   useEffect(() => {
     if (driverRecord) refreshDriverSession(driverRecord.id);
   }, [driverRecord, refreshDriverSession]);
+
+  useEffect(() => {
+    if (!isDriverOnline || useMockApi()) return;
+    const loadLists = () => {
+      void fetchScheduledTrips().then((res) => {
+        if (res.ok) setScheduledTripsCount(res.data?.length ?? 0);
+      });
+      void fetchDriverReservations().then((res) => {
+        if (res.ok) setReservationsCount(res.data?.length ?? 0);
+      });
+    };
+    loadLists();
+    const timer = setInterval(loadLists, 15000);
+    return () => clearInterval(timer);
+  }, [isDriverOnline]);
 
   useEffect(() => {
     if (!isDriverOnline || !activeTrip || activeTrip.status !== 'searching') {
@@ -245,6 +263,15 @@ export default function DriverHome() {
             </View>
           )}
 
+          {isDriverOnline && (
+            <View style={styles.listsSection}>
+              <Text style={styles.listsTitle}>Solicitudes</Text>
+              <Text style={styles.listsLine}>Cercanas ahora: {availableTripsCount}</Text>
+              <Text style={styles.listsLine}>Programadas disponibles: {scheduledTripsCount}</Text>
+              <Text style={styles.listsLine}>Mis reservas: {reservationsCount}</Text>
+            </View>
+          )}
+
           {vehicle && (
             <View style={styles.unitRow}>
               <VehicleBadge type={vehicle.vehicleType} compact />
@@ -259,7 +286,15 @@ export default function DriverHome() {
           )}
 
           {!operation.allowed && (
-            <Text style={styles.warning}>{operation.reason}</Text>
+            <>
+              <Text style={styles.warning}>{operation.reason}</Text>
+              <PrimaryButton
+                title="Ver estado de verificación"
+                variant="outline"
+                onPress={() => router.push('/driver/verification-status')}
+                style={{ marginBottom: spacing.sm }}
+              />
+            </>
           )}
 
           {isDriverOnline && (
@@ -420,6 +455,15 @@ const styles = StyleSheet.create({
   hotspotsTitle: { ...typography.bodyMedium, color: colors.text },
   hotspotsHint: { ...typography.caption, color: colors.textSecondary },
   hotspotsCount: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs },
+  listsSection: {
+    backgroundColor: colors.borderLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: 4,
+  },
+  listsTitle: { ...typography.bodyMedium, color: colors.text },
+  listsLine: { ...typography.caption, color: colors.textSecondary },
   unitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   unitText: { ...typography.caption, color: colors.textSecondary },
   subLine: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.sm },

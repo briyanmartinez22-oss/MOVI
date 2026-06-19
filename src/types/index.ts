@@ -1,7 +1,8 @@
 import type { CargoDetails } from './tripExtras';
 import type { ServiceRequestType, ServiceType } from './models';
+import type { ServiceCategoryId } from '../data/serviceCategories';
 
-export type { CargoDetails, ServiceRequestType, ServiceType };
+export type { CargoDetails, ServiceRequestType, ServiceType, ServiceCategoryId };
 
 export type TripType = 'shared' | 'private';
 
@@ -18,6 +19,10 @@ export type TripLifecycleStatus =
   | 'trip_started'
   | 'trip_completed'
   | 'cancelled';
+
+export type RequestMode = 'NOW' | 'SCHEDULED';
+
+export type ScheduledStatus = 'open' | 'confirmed';
 
 export type TripStatus =
   | TripLifecycleStatus
@@ -57,7 +62,7 @@ export interface Offer {
   driver: Driver;
   price: number;
   etaMinutes: number;
-  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'pending' | 'accepted' | 'rejected' | 'expired' | 'not_selected';
   createdAt: number;
 }
 
@@ -84,7 +89,15 @@ export interface TripRequest {
   photoUris?: string[];
   serviceType?: ServiceType;
   requestType?: ServiceRequestType;
+  serviceCategoryId?: ServiceCategoryId;
   cargoDetails?: CargoDetails;
+  requestMode?: RequestMode;
+  scheduledAt?: number;
+  offerDeadlineAt?: number;
+  requiredVehicleType?: string;
+  scheduledStatus?: ScheduledStatus;
+  pickupLatitude?: number;
+  pickupLongitude?: number;
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
