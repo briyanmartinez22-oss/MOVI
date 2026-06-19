@@ -65,8 +65,11 @@ export default function RegisterVehicle() {
   };
 
   const uploadDoc = async (key: typeof VEHICLE_DOCS[number]) => {
+    const { pickAndUploadDocument } = await import('../../src/services/uploadService');
+    const url = await pickAndUploadDocument();
+    if (!url) return;
     await mockApi.uploadVehicleDocuments(vehicleId, {
-      [key]: `mock://${key}`,
+      [key]: url,
       ...(key === 'registrationCardImage' && registrationName
         ? { registrationName: registrationName.trim() }
         : {}),

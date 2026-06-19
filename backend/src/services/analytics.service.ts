@@ -1,5 +1,11 @@
 import type { DriverSubscription } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { parseJsonField } from '../utils/normalize';
+import {
+  mapDriverMvpStatus,
+  mapOwnerMvpStatus,
+  mapVehicleMvpStatus,
+} from '../utils/verification-status';
 
 type CountAggregate = { _count: { _all: number } };
 type VehicleTypeGroup = CountAggregate & { vehicleType: string };
@@ -105,21 +111,58 @@ export async function getAdminKpis() {
 export async function listPendingVerifications() {
   const [owners, vehicles, drivers] = await Promise.all([
     prisma.owner.findMany({
-      where: { status: { in: ['documents_uploaded', 'under_review', 'selfie_pending'] } },
-      include: { user: true },
+      where: { status: { not: 'approved' } },
+      orderBy: { createdAt: 'desc' },
       take: 100,
     }),
     prisma.vehicle.findMany({
-      where: { status: { in: ['documents_uploaded', 'under_review'] } },
-      include: { owner: true },
+      where: { status: { not: 'approved' } },
+      orderBy: { createdAt: 'desc' },
       take: 100,
     }),
     prisma.driver.findMany({
-      where: { status: 'pending' },
-      include: { owner: true, vehicle: true },
+      where: { status: { not: 'approved' } },
+      include: { vehicle: true },
+      orderBy: { createdAt: 'desc' },
       take: 100,
     }),
   ]);
 
-  return { owners, vehicles, drivers };
+  return {
+    owners: owners.map((o) => ({
+      id: o.id,
+      userId: o.userId,
+      name: o.name,
+      phone: o.phone,
+      dui: o.dui,
+      status: o.status,
+      mvpStatus: mapOwnerMvpStatus(o.status),
+      documents: parseJsonField(o.documentsJson, {}),
+      createdAt: o.createdAt.toISOString(),
+    })),
+    vehicles: vehicles.map((v) => ({
+      vehicleId: v.id,
+      unitNumber: v.unitNumber,
+      plateNumber: v.plateNumber,
+      vehicleType: v.vehicleType,
+      ownerId: v.ownerId,
+      status: v.status,
+      mvpStatus: mapVehicleMvpStatus(v.status),
+      documents: parseJsonField(v.documentsJson, {}),
+      createdAt: v.createdAt.toISOString(),
+    })),
+    drivers: drivers.map((d) => ({
+      id: d.id,
+      userId: d.userId,
+      ownerId: d.ownerId,
+      vehicleId: d.vehicleId,
+      name: d.name,
+      phone: d.phone,
+      status: d.status,
+      mvpStatus: mapDriverMvpStatus(d.status),
+      unitNumber: d.vehicle.unitNumber,
+      plateNumber: d.vehicle.plateNumber,
+      createdAt: d.createdAt.toISOString(),
+    })),
+  };
 }

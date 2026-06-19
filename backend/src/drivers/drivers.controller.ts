@@ -69,12 +69,23 @@ export class DriversController {
     @Param('driverId') driverId: string,
     @Body() body: unknown
   ) {
-    const parsed = z.object({ vehicleId: z.string().min(1) }).safeParse(body);
+    const parsed = z
+      .object({
+        vehicleId: z.string().min(1),
+        latitude: z.number().optional(),
+        longitude: z.number().optional(),
+      })
+      .safeParse(body);
     if (!parsed.success) {
       throw new HttpException('vehicleId requerido', HttpStatus.BAD_REQUEST);
     }
 
-    const result = await startDriverSession(driverId, parsed.data.vehicleId);
+    const location =
+      parsed.data.latitude != null && parsed.data.longitude != null
+        ? { latitude: parsed.data.latitude, longitude: parsed.data.longitude }
+        : undefined;
+
+    const result = await startDriverSession(driverId, parsed.data.vehicleId, location);
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Error al iniciar sesión', HttpStatus.BAD_REQUEST);
     }

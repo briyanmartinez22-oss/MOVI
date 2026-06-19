@@ -90,7 +90,10 @@ export default function RegisterOwnerScreen() {
   const uploadDoc = async (key: typeof DOC_FIELDS[number]['key']) => {
     const id = ownerId || owner?.id;
     if (!id) return;
-    await mockApi.uploadOwnerDocuments(id, { [key]: `mock://${key}-${Date.now()}` });
+    const { pickAndUploadDocument } = await import('../../src/services/uploadService');
+    const url = await pickAndUploadDocument();
+    if (!url) return;
+    await mockApi.uploadOwnerDocuments(id, { [key]: url });
     refresh();
   };
 
@@ -137,7 +140,7 @@ export default function RegisterOwnerScreen() {
             {DOC_FIELDS.map((doc) => (
               <TouchableOpacity key={doc.key} style={styles.docBtn} onPress={() => uploadDoc(doc.key)}>
                 <Text style={styles.docLabel}>{doc.label}</Text>
-                <Text style={styles.docAction}>Subir (mock)</Text>
+                <Text style={styles.docAction}>Subir foto</Text>
               </TouchableOpacity>
             ))}
             <Text style={styles.sectionTitle}>Caso especial (opcional)</Text>

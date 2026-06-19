@@ -34,7 +34,7 @@ export default function RegisterPassengerScreen() {
     lastName?: string;
     consented?: string;
   }>();
-  const { registerPassenger } = useAuth();
+  const { registerPassenger, requestOtp } = useAuth();
   const [firstName, setFirstName] = useState(firstNameParam ?? '');
   const [lastName, setLastName] = useState(lastNameParam ?? '');
   const [phone, setPhone] = useState(phoneParam ?? '');
@@ -96,6 +96,11 @@ export default function RegisterPassengerScreen() {
     const forward = registrationParams();
 
     if (await hasPermissionsAccepted('passenger_register')) {
+      const otpRes = await requestOtp(phone);
+      if (!otpRes.ok) {
+        setError(otpRes.error ?? 'No se pudo enviar el OTP');
+        return;
+      }
       router.replace({ pathname: '/auth/otp' as never, params: forward });
       return;
     }
