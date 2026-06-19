@@ -1,6 +1,7 @@
 import type { Notification, NotificationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { stringifyJsonField } from '../utils/normalize';
+import { getNotificationProvider, TRIP_PUSH_EVENTS } from './notificationProvider';
 
 export async function registerPushToken(userId: string, token: string, platform: string, deviceId?: string) {
   return prisma.pushToken.upsert({
@@ -51,10 +52,39 @@ export async function markNotificationRead(userId: string, notificationId: strin
   });
 }
 
-/** FCM/APNS dispatch placeholder — logs until credentials are configured */
-export async function dispatchPush(userId: string, title: string, body: string) {
-  const tokens = await prisma.pushToken.findMany({ where: { userId, isActive: true } });
-  if (!tokens.length) return { sent: 0 };
-  console.log(`[PUSH DEMO] user=${userId} tokens=${tokens.length} title=${title} body=${body}`);
-  return { sent: tokens.length, mode: 'demo' };
+export async function dispatchPush(
+  userId: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+) {
+  const tokens = await prisma.pushToken.findMany({
+    where: { userId, isActive: true },
+    select: { token: true },
+  });
+  if (!tokens.length) return { sent: 0, mode: 'none' as const };
+
+  const provider = await getNotificationProvider();
+  return provider.sendPush(
+    tokens.map((t) => t.token),
+    title,
+    body,
+    data
+  );
 }
+
+export async function notifyUser(
+  userId: string,
+  type: NotificationType,
+  title: string,
+  body: string,
+  eventKey?: string,
+  extra?: Record<string, unknown>
+) {
+  await createNotification(userId, type, title, body, { event: eventKey, ...extra });
+  void dispatchPush(userId, title, body, eventKey ? { event: eventKey } : undefined).catch((err) => {
+    console.warn('[notifyUser] push dispatch failed:', err);
+  });
+}
+
+export { TRIP_PUSH_EVENTS };

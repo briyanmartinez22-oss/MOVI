@@ -19,12 +19,12 @@ export async function parseMultipartOrJsonDocs(req: Request): Promise<DocFields>
     const storage = await getStorageProvider();
     for (const uploaded of allFiles) {
       const fieldName = uploaded.fieldname || 'file';
-      const url = await storage.uploadFile(
+      const result = await storage.uploadFile(
         uploaded.buffer,
         uploaded.originalname,
         uploaded.mimetype
       );
-      docs[fieldName] = url;
+      docs[fieldName] = result.url;
     }
   }
 

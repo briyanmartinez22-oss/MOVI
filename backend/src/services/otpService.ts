@@ -1,7 +1,8 @@
 import { prisma } from '../lib/prisma';
-import { isValidSalvadorPhone, normalizePhone } from '../utils/phone';
+import { env, isTwilioVerifyConfigured } from '../config/env';
+import { isValidMoviPhone, normalizePhone } from '../utils/phone';
 import { checkRateLimit } from './rateLimit.service';
-import { generateOtpCode, getSmsProvider } from './smsProvider';
+import { generateOtpCode, getOtpProvider } from './otpProvider';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_RATE_MAX = 5;
@@ -9,7 +10,7 @@ const OTP_RATE_WINDOW_MS = 15 * 60 * 1000;
 
 export async function requestOtp(phone: string) {
   const phoneNumber = normalizePhone(phone);
-  if (!isValidSalvadorPhone(phone)) {
+  if (!isValidMoviPhone(phone)) {
     return { ok: false as const, error: 'Número de teléfono inválido' };
   }
 
@@ -17,25 +18,29 @@ export async function requestOtp(phone: string) {
     return { ok: false as const, error: 'Demasiados intentos. Espera 15 minutos.' };
   }
 
+  const otp = await getOtpProvider();
+  const useTwilioVerify = otp.mode === 'twilio' && isTwilioVerifyConfigured();
+  const code = useTwilioVerify ? 'verify' : generateOtpCode();
+
   await prisma.otpChallenge.deleteMany({
     where: { phoneNumber, verified: false },
   });
 
-  const sms = await getSmsProvider();
-  const code = generateOtpCode();
-  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+  const sendResult = await otp.sendOtp(phoneNumber, useTwilioVerify ? undefined : code);
+  if (!sendResult.ok) {
+    return { ok: false as const, error: sendResult.error ?? 'No se pudo enviar OTP' };
+  }
 
+  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
   await prisma.otpChallenge.create({
-    data: { phoneNumber, code, expiresAt },
+    data: {
+      phoneNumber,
+      code: useTwilioVerify ? 'twilio-verify' : code,
+      expiresAt,
+    },
   });
 
-  const message = sms.isDemoMode
-    ? `MOVI demo OTP: ${code}`
-    : `Tu código MOVI es: ${code}. Válido por 10 minutos.`;
-
-  await sms.sendSms(phoneNumber, message);
-
-  return { ok: true as const, sent: true, demo: sms.isDemoMode };
+  return { ok: true as const, sent: true, demo: sendResult.demo };
 }
 
 async function findOtpChallenge(phoneNumber: string, code: string, requireUnverified: boolean) {
@@ -52,37 +57,58 @@ async function findOtpChallenge(phoneNumber: string, code: string, requireUnveri
 
 export async function verifyOtp(phone: string, code: string) {
   const phoneNumber = normalizePhone(phone);
-  if (!isValidSalvadorPhone(phone)) {
+  if (!isValidMoviPhone(phone)) {
     return { ok: false as const, error: 'Número de teléfono inválido' };
   }
 
-  const challenge = await prisma.otpChallenge.findFirst({
-    where: {
-      phoneNumber,
-      code,
-      expiresAt: { gt: new Date() },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const otp = await getOtpProvider();
+  const useTwilioVerify = otp.mode === 'twilio' && isTwilioVerifyConfigured();
 
-  if (!challenge) {
-    const pending = await prisma.otpChallenge.findFirst({
+  if (useTwilioVerify) {
+    const providerCheck = await otp.verifyOtp(phoneNumber, code);
+    if (!providerCheck.ok) {
+      return { ok: false as const, error: providerCheck.error ?? 'Código OTP inválido.' };
+    }
+  } else {
+    const challenge = await prisma.otpChallenge.findFirst({
       where: {
         phoneNumber,
-        verified: false,
+        code,
         expiresAt: { gt: new Date() },
       },
       orderBy: { createdAt: 'desc' },
     });
-    if (!pending) {
-      return { ok: false as const, error: 'No hay OTP activo para este teléfono.' };
+
+    if (!challenge) {
+      const pending = await prisma.otpChallenge.findFirst({
+        where: {
+          phoneNumber,
+          verified: false,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!pending) {
+        return { ok: false as const, error: 'No hay OTP activo para este teléfono.' };
+      }
+      return { ok: false as const, error: 'Código OTP inválido.' };
     }
-    return { ok: false as const, error: 'Código OTP inválido.' };
+
+    if (!challenge.verified) {
+      await prisma.otpChallenge.update({
+        where: { id: challenge.id },
+        data: { verified: true },
+      });
+    }
   }
 
-  if (!challenge.verified) {
+  const activeChallenge = await prisma.otpChallenge.findFirst({
+    where: { phoneNumber, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (activeChallenge && !activeChallenge.verified) {
     await prisma.otpChallenge.update({
-      where: { id: challenge.id },
+      where: { id: activeChallenge.id },
       data: { verified: true },
     });
   }
@@ -95,11 +121,20 @@ export async function verifyOtp(phone: string, code: string) {
   };
 }
 
-/** Acepta OTP ya verificado en pantalla anterior (flujo login en 2 pasos). */
 export async function assertOtpValidForLogin(phone: string, code: string) {
   const phoneNumber = normalizePhone(phone);
-  const challenge = await findOtpChallenge(phoneNumber, code, false);
+  const otp = await getOtpProvider();
+  const useTwilioVerify = otp.mode === 'twilio' && isTwilioVerifyConfigured();
 
+  if (useTwilioVerify) {
+    const providerCheck = await otp.verifyOtp(phoneNumber, code);
+    if (!providerCheck.ok) {
+      return { ok: false as const, error: providerCheck.error ?? 'No hay OTP activo para este teléfono.' };
+    }
+    return { ok: true as const };
+  }
+
+  const challenge = await findOtpChallenge(phoneNumber, code, false);
   if (!challenge) {
     return { ok: false as const, error: 'No hay OTP activo para este teléfono.' };
   }

@@ -16,9 +16,9 @@ import { signAuthToken } from '../lib/jwt';
 import { getMe, loginWithOtp } from '../services/moviService';
 import { requestOtp, verifyOtp } from '../services/otpService';
 import { updateUserProfilePhoto } from '../services/users.service';
-import { isValidSalvadorPhone } from '../utils/phone';
+import { isValidMoviPhone } from '../utils/phone';
 
-const phoneSchema = z.string().refine(isValidSalvadorPhone, 'Número de teléfono inválido');
+const phoneSchema = z.string().refine(isValidMoviPhone, 'Número de teléfono inválido');
 
 @Controller('auth')
 export class AuthController {
