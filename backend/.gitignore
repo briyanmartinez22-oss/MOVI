@@ -6,3 +6,11 @@ dist/
 prisma/dev.db
 prisma/dev.db-journal
 /uploads/
+
+# Editor temp/backup files
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+*.save

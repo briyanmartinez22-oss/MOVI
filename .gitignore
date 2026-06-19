@@ -42,6 +42,14 @@ backend/.env
 # typescript
 *.tsbuildinfo
 
+# Editor temp/backup files
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+*.save
+
 # generated native folders
 /ios
 /android
