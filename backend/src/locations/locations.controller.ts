@@ -15,6 +15,8 @@ import {
   isTwilioVerifyConfigured,
 } from '../config/env';
 import { getMapsProvider } from '../services/mapsProvider';
+import { verifyCloudinaryConnection } from '../services/cloudinary.service';
+import { verifyMapsConnection } from '../services/maps.service';
 import { getDemandZonesSeed } from '../services/moviService';
 
 @Controller()
@@ -63,9 +65,14 @@ export class LocationsController {
     if (!parsed.success) return { error: 'Datos inválidos' };
 
     const maps = await getMapsProvider();
-    const distanceKm = await maps.calculateDistanceKm(parsed.data.origin, parsed.data.destination);
-    const etaMinutes = maps.calculateEtaMinutes(distanceKm);
-    return { distanceKm, etaMinutes, provider: maps.mode };
+    const route = await maps.getRoute(parsed.data.origin, parsed.data.destination);
+    return {
+      distanceKm: route.distanceKm,
+      etaMinutes: route.durationMinutes,
+      provider: maps.mode,
+      polyline: route.polyline,
+      path: route.path,
+    };
   }
 
   @Post('locations/route')
@@ -100,6 +107,12 @@ export class LocationsController {
           s3: isS3Configured(),
           local: true,
         },
+        cloudinary: {
+          active: storageMode === 'cloudinary',
+          configured: isCloudinaryConfigured(),
+          cloudName: isCloudinaryConfigured() ? env.cloudinaryCloudName ?? null : null,
+          folder: isCloudinaryConfigured() ? env.cloudinaryFolder : null,
+        },
       },
       maps: {
         requested: env.mapsProvider,
@@ -108,6 +121,10 @@ export class LocationsController {
           google: isGoogleMapsConfigured(),
           mapbox: isMapboxConfigured(),
           fallback: true,
+        },
+        google: {
+          active: mapsMode === 'google',
+          configured: isGoogleMapsConfigured(),
         },
       },
       otp: {
@@ -130,5 +147,15 @@ export class LocationsController {
         },
       },
     };
+  }
+
+  @Get('integrations/cloudinary/test')
+  async cloudinaryTest() {
+    return verifyCloudinaryConnection();
+  }
+
+  @Get('integrations/maps/test')
+  async mapsTest() {
+    return verifyMapsConnection();
   }
 }

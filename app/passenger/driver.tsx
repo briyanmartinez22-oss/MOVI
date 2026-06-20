@@ -11,6 +11,7 @@ import {
 } from '../../src/components';
 import { MeetingFacilitation } from '../../src/components/MeetingFacilitation';
 import { useTrip } from '../../src/context/TripContext';
+import { getServiceCategory } from '../../src/data/serviceCategories';
 import { getDriverById, getVehicle } from '../../src/services/profileData';
 import { buildRouteFromPlaces, buildTripMarkers } from '../../src/utils/mapHelpers';
 import { formatEta } from '../../src/utils/geo';
@@ -39,6 +40,7 @@ export default function DriverAssignedScreen() {
   const driverRecord = getDriverById(driver.id);
   const vehicle = driverRecord ? getVehicle(driverRecord.vehicleId) : undefined;
   const unitPhoto = vehicle?.documents.unitPhoto ?? vehicle?.documents.fullVehiclePhoto;
+  const vehicleSectionLabel = getServiceCategory(activeTrip.serviceCategoryId).vehicleSectionLabel;
 
   return (
     <View style={styles.container}>
@@ -60,7 +62,7 @@ export default function DriverAssignedScreen() {
 
       <View style={styles.bottomArea}>
         <BottomCard expanded>
-          <Text style={styles.sectionTitle}>Tu mototaxi</Text>
+          <Text style={styles.sectionTitle}>{vehicleSectionLabel}</Text>
 
           {unitPhoto ? (
             <View style={styles.photoWrap}>

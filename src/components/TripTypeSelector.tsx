@@ -16,7 +16,7 @@ export function TripTypeSelector({ value, onChange }: Props) {
         onPress={() => onChange('shared')}
       >
         <Text style={[styles.title, value === 'shared' && styles.titleActive]}>
-          Mototaxi Compartido
+          Compartido
         </Text>
         <Text style={styles.subtitle}>Mínimo {formatPrice(getMinPrice('shared'))}</Text>
       </TouchableOpacity>
@@ -26,7 +26,7 @@ export function TripTypeSelector({ value, onChange }: Props) {
         onPress={() => onChange('private')}
       >
         <Text style={[styles.title, value === 'private' && styles.titleActive]}>
-          Mototaxi Privado
+          Privado
         </Text>
         <Text style={styles.subtitle}>Mínimo {formatPrice(getMinPrice('private'))}</Text>
       </TouchableOpacity>

@@ -5,6 +5,12 @@
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  extractUploadPayload,
+  isStoredUrl,
+  loginOwnerForUpload,
+  uploadTestFile,
+} from './storage-upload-qa';
 
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
@@ -19,6 +25,8 @@ const SECRET_PATTERNS = [
   /sk_live_[a-zA-Z0-9]+/,
   /sk_test_[a-zA-Z0-9]+/,
   /CLOUDINARY_API_SECRET\s*=\s*['"][^'"]+['"]/,
+  /GOOGLE_MAPS_API_KEY\s*=\s*['"][^'"]+['"]/,
+  /AIza[0-9A-Za-z\-_]{35}/,
   /TWILIO_AUTH_TOKEN\s*=\s*['"][^'"]+['"]/,
   /BEGIN PRIVATE KEY/,
 ];
@@ -93,6 +101,8 @@ function checkSensitiveFilesNotTracked(): boolean {
 function checkProviderModulesExist(): boolean {
   const required = [
     'backend/src/services/storageProvider.ts',
+    'backend/src/services/cloudinary.service.ts',
+    'backend/src/services/maps.service.ts',
     'backend/src/services/mapsProvider.ts',
     'backend/src/services/otpProvider.ts',
     'backend/src/services/notificationProvider.ts',
@@ -131,6 +141,35 @@ async function run() {
     data?.maps?.active === 'fallback' || data?.maps?.active === 'google' || data?.maps?.active === 'mapbox'
   );
   record(
+    'Maps Google status expuesto',
+    typeof data?.maps?.google?.active === 'boolean' &&
+      typeof data?.maps?.google?.configured === 'boolean'
+  );
+
+  const mapsTest = await req('/integrations/maps/test');
+  const mapsData = mapsTest.json.data ?? mapsTest.json;
+  record(
+    'GET /integrations/maps/test responde',
+    mapsTest.status === 200 && typeof mapsData?.geocodeTest === 'string'
+  );
+  record(
+    'Maps test no expone API key',
+    !JSON.stringify(mapsData).includes('AIza') &&
+      !JSON.stringify(mapsData).includes('GOOGLE_MAPS_API_KEY')
+  );
+  record(
+    'Maps geocode test responde',
+    mapsData?.geocodeTest === 'ok' || mapsData?.geocodeTest === 'skipped'
+  );
+  record(
+    'Maps route test responde',
+    mapsData?.routeTest === 'ok' ||
+      mapsData?.routeTest === 'skipped' ||
+      mapsData?.provider === 'fallback'
+  );
+
+  const cloudinaryTest = await req('/integrations/cloudinary/test');
+  record(
     'OTP demo permitido solo en dev',
     data?.environment !== 'production' ? data?.otp?.demoAllowed === true : data?.otp?.demoAllowed === false
   );
@@ -138,6 +177,66 @@ async function run() {
     'Push no rompe sin credenciales',
     data?.push?.active === 'none' || data?.push?.active === 'expo' || data?.push?.active === 'firebase'
   );
+
+  record(
+    'Storage Cloudinary status expuesto',
+    typeof data?.storage?.cloudinary?.active === 'boolean' &&
+      typeof data?.storage?.cloudinary?.configured === 'boolean'
+  );
+  record(
+    'Storage Cloudinary activo solo con credenciales',
+    data?.storage?.cloudinary?.active === true
+      ? data?.storage?.cloudinary?.configured === true
+      : true
+  );
+  record(
+    'Storage folder Cloudinary no expone secretos',
+    data?.storage?.cloudinary?.folder == null ||
+      (typeof data.storage.cloudinary.folder === 'string' &&
+        !data.storage.cloudinary.folder.includes('secret'))
+  );
+
+  const cloudinaryData = cloudinaryTest.json.data ?? cloudinaryTest.json;
+  record(
+    'GET /integrations/cloudinary/test responde',
+    cloudinaryTest.status === 200 && typeof cloudinaryData?.configured === 'boolean'
+  );
+  record(
+    'Cloudinary test no expone secretos',
+    !JSON.stringify(cloudinaryData).includes('api_secret') &&
+      !JSON.stringify(cloudinaryData).includes('CLOUDINARY_API_SECRET')
+  );
+
+  try {
+    const { token } = await loginOwnerForUpload(API, OTP);
+    const upload = await uploadTestFile(API, token, 'duiFront');
+    const payload = extractUploadPayload(upload.json);
+    const url = payload?.url;
+    record(
+      'POST /uploads multipart responde 200',
+      (upload.status === 200 || upload.status === 201) && upload.json.ok === true
+    );
+    record(
+      'Upload devuelve URL almacenada (no base64)',
+      isStoredUrl(url),
+      typeof url === 'string' ? url.slice(0, 80) : 'sin url'
+    );
+    record(
+      'Upload provider coincide con storage activo',
+      payload?.provider === data?.storage?.active,
+      `${String(payload?.provider)} vs ${String(data?.storage?.active)}`
+    );
+    record(
+      'Upload persiste metadata en PostgreSQL',
+      typeof payload?.id === 'string' && typeof payload?.storageKey === 'string'
+    );
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    record('POST /uploads multipart responde 200', false, detail);
+    record('Upload devuelve URL almacenada (no base64)', false, detail);
+    record('Upload provider coincide con storage activo', false, detail);
+    record('Upload persiste metadata en PostgreSQL', false, detail);
+  }
 
   const geocode = await req('/locations/geocode?q=Centro+San+Salvador');
   const geoData = geocode.json.data ?? geocode.json;

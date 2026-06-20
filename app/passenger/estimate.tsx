@@ -18,7 +18,7 @@ import { useTrip } from '../../src/context/TripContext';
 import { getPrimaryVehicleType, getServiceCategory } from '../../src/data/serviceCategories';
 import { canShowScheduleOption } from '../../src/utils/tripScheduling';
 import { buildRouteFromPlaces, buildTripMarkers } from '../../src/utils/mapHelpers';
-import { formatDistance } from '../../src/utils/geo';
+import { formatDistance, formatEta } from '../../src/utils/geo';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const PASSENGER_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
@@ -48,6 +48,8 @@ export default function EstimateScreen() {
     setScheduledAt,
     scheduledNotes,
     setScheduledNotes,
+    tripRoute,
+    getTripEtaMinutes,
   } = useTrip();
   const [isPlusTen, setIsPlusTen] = useState(passengerCount > 10);
 
@@ -61,11 +63,12 @@ export default function EstimateScreen() {
   }
 
   const distanceKm = getTripDistanceKm();
+  const etaMinutes = getTripEtaMinutes();
   const category = getServiceCategory(serviceCategoryId);
   const requiredVehicleType = getPrimaryVehicleType(serviceCategoryId);
   const showScheduleOption = canShowScheduleOption(requiredVehicleType);
   const markers = buildTripMarkers(origin, destination, true);
-  const route = buildRouteFromPlaces(origin, destination);
+  const route = buildRouteFromPlaces(origin, destination, tripRoute?.path);
 
   const handlePassengerSelect = (count: number) => {
     setIsPlusTen(false);
@@ -145,6 +148,10 @@ export default function EstimateScreen() {
               <View style={styles.stat}>
                 <Ionicons name="navigate-outline" size={18} color={colors.textSecondary} />
                 <Text style={styles.statValue}>{formatDistance(distanceKm)}</Text>
+              </View>
+              <View style={styles.stat}>
+                <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
+                <Text style={styles.statValue}>{formatEta(etaMinutes)}</Text>
               </View>
             </View>
 

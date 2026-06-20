@@ -12,6 +12,7 @@ import {
   formatTime,
 } from '../src/services/profileData';
 import type { TripHistoryRecord } from '../src/types/models';
+import { getCategoryModeLabel, getServiceCategory } from '../src/data/serviceCategories';
 import { colors, typography, spacing } from '../src/theme';
 
 export default function ActivityCenterScreen() {
@@ -35,6 +36,10 @@ export default function ActivityCenterScreen() {
           <Card style={styles.block}>
             <Text style={styles.section}>Viaje activo</Text>
             <Text style={styles.meta}>{activeTrip.origin.name} → {activeTrip.destination.name}</Text>
+            <Text style={styles.meta}>
+              {getServiceCategory(activeTrip.serviceCategoryId).label} ·{' '}
+              {getCategoryModeLabel(activeTrip.serviceCategoryId ?? 'mototaxi', activeTrip.tripType)}
+            </Text>
             <Text style={styles.meta}>Estado: {activeTrip.lifecycleStatus}</Text>
           </Card>
         )}

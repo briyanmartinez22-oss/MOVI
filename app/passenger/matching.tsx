@@ -8,6 +8,7 @@ import { HelpButton } from '../../src/components/HelpButton';
 import { useSafeBack } from '../../src/hooks/useSafeBack';
 import { SafeBackFallback } from '../../src/components/SafeBackFallback';
 import { useTrip } from '../../src/context/TripContext';
+import { getServiceCategory } from '../../src/data/serviceCategories';
 import { buildRouteFromPlaces, buildTripMarkers } from '../../src/utils/mapHelpers';
 import { useMockApi } from '../../src/services/api/config';
 import { colors, typography, spacing } from '../../src/theme';
@@ -61,6 +62,8 @@ export default function MatchingScreen() {
     );
   }
 
+  const matchingLabel = getServiceCategory(activeTrip?.serviceCategoryId).matchingLabel;
+
   return (
     <View style={styles.container}>
       <MapScreen
@@ -90,7 +93,7 @@ export default function MatchingScreen() {
             <Text style={styles.subtitle}>
               {timedOut
                 ? 'Revisa tu conexión o intenta de nuevo.'
-                : 'Esperando ofertas de mototaxis disponibles...'}
+                : `Esperando ofertas de ${matchingLabel}...`}
             </Text>
             {activeTrip && !timedOut && (
               <Text style={styles.count}>

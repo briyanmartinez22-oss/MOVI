@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -7,6 +7,7 @@ import {
   isCloudinaryConfigured,
   isS3Configured,
 } from '../config/env';
+import { uploadToCloudinary } from './cloudinary.service';
 
 export type StorageProviderMode = 'local' | 's3' | 'cloudinary';
 
@@ -98,48 +99,15 @@ async function createS3Provider(): Promise<StorageProvider> {
 }
 
 async function createCloudinaryProvider(): Promise<StorageProvider> {
-  const cloudName = env.cloudinaryCloudName!;
-  const apiKey = env.cloudinaryApiKey!;
-  const apiSecret = env.cloudinaryApiSecret!;
-
   return {
     mode: 'cloudinary',
     async uploadFile(buffer, filename, mimeType) {
-      const timestamp = Math.round(Date.now() / 1000);
-      const publicId = buildStoredName(sanitizeFilename(filename)).replace(/\.[^.]+$/, '');
-      const paramsToSign = `public_id=${publicId}&timestamp=${timestamp}`;
-      const signature = createHash('sha1')
-        .update(paramsToSign + apiSecret)
-        .digest('hex');
-
-      const form = new FormData();
-      form.append('file', new Blob([new Uint8Array(buffer)], { type: mimeType }), filename);
-      form.append('api_key', apiKey);
-      form.append('timestamp', String(timestamp));
-      form.append('public_id', publicId);
-      form.append('signature', signature);
-
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-        method: 'POST',
-        body: form,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Cloudinary upload failed: ${errText.slice(0, 200)}`);
-      }
-
-      const data = (await res.json()) as {
-        secure_url: string;
-        public_id: string;
-        bytes: number;
-      };
-
+      const uploaded = await uploadToCloudinary(buffer, filename, mimeType);
       return {
-        url: data.secure_url,
-        key: data.public_id,
+        url: uploaded.url,
+        key: uploaded.key,
         mimeType,
-        size: data.bytes ?? buffer.length,
+        size: uploaded.size,
         provider: 'cloudinary',
       };
     },

@@ -1,10 +1,16 @@
 import { MapMarker, Place } from '../types';
 import { MapRoute } from '../components/MoviMapView';
+import { Coordinates } from '../types';
 
-export function buildRouteFromPlaces(origin: Place, destination: Place): MapRoute {
+export function buildRouteFromPlaces(
+  origin: Place,
+  destination: Place,
+  path?: Coordinates[]
+): MapRoute {
   return {
     origin: origin.coordinates,
     destination: destination.coordinates,
+    path,
   };
 }
 

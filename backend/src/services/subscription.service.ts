@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { mapSubscriptionMvpStatus, MVP_MONTHLY_FEE_USD } from '../utils/subscription-status';
 
 export async function getDriverSubscription(driverId: string) {
   return prisma.driverSubscription.findUnique({ where: { driverId } });
@@ -35,7 +36,9 @@ export async function getSubscriptionForUser(userId: string) {
     id: s.id,
     driverId: driver.id,
     status: s.status,
+    subscriptionStatus: mapSubscriptionMvpStatus(s.status),
     monthlyAmountUsd: s.monthlyAmountUsd,
+    monthlyFee: MVP_MONTHLY_FEE_USD,
     registeredAt: s.registeredAt.toISOString(),
     trialEndsAt: s.trialEndsAt.toISOString(),
     nextBillingAt: s.nextBillingAt.toISOString(),

@@ -17,6 +17,7 @@ import { buildRouteFromPlaces, buildTripMarkers } from '../../src/utils/mapHelpe
 import { formatEta } from '../../src/utils/geo';
 import { formatPrice } from '../../src/utils/pricing';
 import { formatCoordinates } from '../../src/utils/parseCoordinates';
+import { getCategoryModeLabel, getServiceCategory } from '../../src/data/serviceCategories';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -49,6 +50,11 @@ export default function TripInProgressScreen() {
   }
 
   const { driver, price, etaMinutes } = activeTrip.acceptedOffer;
+  const category = getServiceCategory(activeTrip.serviceCategoryId);
+  const categoryLabel = getCategoryModeLabel(
+    activeTrip.serviceCategoryId ?? 'mototaxi',
+    activeTrip.tripType
+  );
   const statusLabel =
     STATUS_LABELS[activeTrip.lifecycleStatus] ?? 'Viaje activo';
 
@@ -122,6 +128,10 @@ export default function TripInProgressScreen() {
           />
 
           <View style={styles.routeCard}>
+            <Text style={styles.routeLabel}>Servicio</Text>
+            <Text style={styles.routeValue}>
+              {category.emoji} {categoryLabel}
+            </Text>
             <Text style={styles.routeLabel}>Origen</Text>
             <Text style={styles.routeValue}>{origin.name}</Text>
             <Text style={styles.coords}>

@@ -8,6 +8,7 @@ export { VehicleBadge } from './VehicleBadge';
 export { PriceStepper } from './PriceStepper';
 export { OfferCard, DriverProfileCard } from './OfferCard';
 export { TripTypeSelector } from './TripTypeSelector';
+export { ServiceCategorySelector } from './ServiceCategorySelector';
 export { ScreenHeader, FormInput, StatusBadge, Card } from './FormUI';
 export { LogoutButton } from './LogoutButton';
 export { AuthShell } from './AuthShell';

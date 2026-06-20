@@ -25,6 +25,7 @@ import {
   DRIVER_STATUS_LABELS,
   DRIVER_BANNER_LABELS,
 } from '../../src/utils/driverTripFlow';
+import { advanceTripOnBackend } from '../../src/services/api';
 import { showSuccess } from '../../src/utils/feedback';
 import { getMeetingShareForDriver } from '../../src/services/meetingService';
 import { colors, typography, spacing, radius } from '../../src/theme';
@@ -111,10 +112,11 @@ export default function DriverTripActiveScreen() {
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Sí, finalizar',
-        onPress: () => {
+        onPress: async () => {
+          await advanceTripOnBackend(activeTrip.id, 'trip_completed');
           completeTrip();
           showSuccess('Viaje completado', `Cobraste ${formatPrice(price)}. ¡Buen trabajo!`);
-          router.replace('/driver');
+          router.replace('/driver/rating');
         },
       },
     ]);
@@ -196,6 +198,12 @@ export default function DriverTripActiveScreen() {
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <HelpButton compact />
+        <TouchableOpacity
+          style={styles.chatBtn}
+          onPress={() => router.push(`/chat/${activeTrip.id}` as never)}
+        >
+          <Ionicons name="chatbubble-outline" size={22} color={colors.text} />
+        </TouchableOpacity>
         {showFallback ? <SafeBackFallback onGoHome={goHome} /> : null}
       </SafeAreaView>
 
@@ -322,6 +330,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  chatBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.full,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

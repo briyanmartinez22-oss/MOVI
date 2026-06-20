@@ -29,6 +29,7 @@ import {
 } from '../types';
 import { DriverSession } from '../types/models';
 import { calculateDistanceKm, calculateEtaMinutes } from '../utils/geo';
+import { fetchTripRoute, type TripRouteInfo } from '../services/geocodingService';
 import { clampPrice } from '../utils/pricing';
 import {
   DEFAULT_SERVICE_CATEGORY_ID,
@@ -121,6 +122,8 @@ interface TripContextValue {
   refreshDriverSession: (driverId: string) => void;
   getDriverEtaToPickup: (driverUserId?: string) => number;
   getTripDistanceKm: () => number;
+  getTripEtaMinutes: () => number;
+  tripRoute: TripRouteInfo | null;
 }
 
 const TripContext = createContext<TripContextValue | null>(null);
@@ -169,6 +172,7 @@ export function TripProvider({ children }: { children: ReactNode }) {
   const [availableTripsCount, setAvailableTripsCount] = useState(0);
   const [driverRequestExpired, setDriverRequestExpired] = useState(false);
   const [driverTrackingCoords, setDriverTrackingCoords] = useState<Coordinates | null>(null);
+  const [tripRoute, setTripRoute] = useState<TripRouteInfo | null>(null);
   const trackingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshDriverSession = useCallback((driverId: string) => {
@@ -564,8 +568,41 @@ export function TripProvider({ children }: { children: ReactNode }) {
   );
 
   const getTripDistanceKm = useCallback(() => {
+    if (tripRoute?.distanceKm) return tripRoute.distanceKm;
     if (!destination) return 0;
     return calculateDistanceKm(origin.coordinates, destination.coordinates);
+  }, [destination, origin, tripRoute]);
+
+  const getTripEtaMinutes = useCallback(() => {
+    if (tripRoute?.durationMinutes) return tripRoute.durationMinutes;
+    return calculateEtaMinutes(getTripDistanceKm());
+  }, [getTripDistanceKm, tripRoute]);
+
+  useEffect(() => {
+    if (!destination) {
+      setTripRoute(null);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchTripRoute(origin.coordinates, destination.coordinates).then((route) => {
+      if (cancelled) return;
+      if (route) {
+        setTripRoute(route);
+        return;
+      }
+      setTripRoute({
+        distanceKm: calculateDistanceKm(origin.coordinates, destination.coordinates),
+        durationMinutes: calculateEtaMinutes(
+          calculateDistanceKm(origin.coordinates, destination.coordinates)
+        ),
+        provider: 'fallback',
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [destination, origin]);
 
   const applyIncomingTripRequest = useCallback((trip: TripRequest) => {
@@ -794,6 +831,8 @@ export function TripProvider({ children }: { children: ReactNode }) {
       refreshDriverSession,
       getDriverEtaToPickup,
       getTripDistanceKm,
+      getTripEtaMinutes,
+      tripRoute,
     }),
     [
       origin,
@@ -831,6 +870,8 @@ export function TripProvider({ children }: { children: ReactNode }) {
       refreshDriverSession,
       getDriverEtaToPickup,
       getTripDistanceKm,
+      getTripEtaMinutes,
+      tripRoute,
     ]
   );
 

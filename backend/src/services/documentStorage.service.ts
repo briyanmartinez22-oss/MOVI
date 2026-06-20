@@ -15,6 +15,7 @@ export type StoredDocumentRecord = {
   storageKey: string;
   mimeType: string;
   size: number;
+  provider: StorageUploadResult['provider'];
   documentType: VerificationDocumentType;
   ownerId: string | null;
   createdAt: string;
@@ -54,6 +55,7 @@ export async function uploadAndStoreDocument(
     storageKey: uploaded.key,
     mimeType: uploaded.mimeType,
     size: uploaded.size,
+    provider: uploaded.provider,
     documentType,
     ownerId: owner.ownerId ?? owner.userId ?? owner.driverId ?? owner.vehicleId ?? null,
     createdAt: doc.uploadedAt.toISOString(),
@@ -70,6 +72,7 @@ export function mapDocumentType(fieldName: string): VerificationDocumentType | n
     licenseBack: 'license_back',
     license_front: 'license_front',
     license_back: 'license_back',
+    license: 'license_front',
     profilePhoto: 'selfie',
     profile_photo: 'selfie',
     selfie: 'selfie',
@@ -77,7 +80,15 @@ export function mapDocumentType(fieldName: string): VerificationDocumentType | n
     vehicle_photo: 'other',
     vehicleRegistration: 'vehicle_registration',
     vehicle_registration: 'vehicle_registration',
+    registrationCard: 'vehicle_registration',
+    registrationCardImage: 'vehicle_registration',
     circulationCard: 'vehicle_registration',
+    permitImage: 'other',
+    insuranceImage: 'vehicle_insurance',
+    platePhoto: 'other',
+    unitPhoto: 'other',
+    fullVehiclePhoto: 'other',
+    ownershipProofImage: 'ownership_proof',
     servicePhoto: 'other',
   };
   return map[fieldName] ?? null;

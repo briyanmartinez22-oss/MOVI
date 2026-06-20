@@ -3,9 +3,23 @@ import { getStorageProvider } from '../services/storageProvider';
 
 type DocFields = Record<string, unknown>;
 
+const BASE64_DATA_URL = /^data:[^;]+;base64,/i;
+
+function isBase64DataUrl(value: unknown): value is string {
+  return typeof value === 'string' && BASE64_DATA_URL.test(value);
+}
+
 export function parseJsonBodyDocs(body: unknown): DocFields {
   if (!body || typeof body !== 'object') return {};
-  return body as DocFields;
+  const docs = body as DocFields;
+  for (const [key, value] of Object.entries(docs)) {
+    if (isBase64DataUrl(value)) {
+      throw new Error(
+        `Campo "${key}": no se acepta base64. Sube el archivo con POST /uploads y envía la URL pública.`
+      );
+    }
+  }
+  return docs;
 }
 
 export async function parseMultipartOrJsonDocs(req: Request): Promise<DocFields> {

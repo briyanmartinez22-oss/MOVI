@@ -1,6 +1,10 @@
 import { getApiUrl } from './api/config';
 
-export async function uploadFile(uri: string, fileName?: string): Promise<string> {
+export async function uploadFile(
+  uri: string,
+  fileName?: string,
+  documentType?: string
+): Promise<string> {
   const token = await import('@react-native-async-storage/async-storage').then((m) =>
     m.default.getItem('movi_session_authToken')
   );
@@ -11,6 +15,9 @@ export async function uploadFile(uri: string, fileName?: string): Promise<string
     type: 'image/jpeg',
     name,
   } as unknown as Blob);
+  if (documentType) {
+    formData.append('documentType', documentType);
+  }
 
   const res = await fetch(`${getApiUrl().replace(/\/$/, '')}/uploads`, {
     method: 'POST',
@@ -26,7 +33,7 @@ export async function uploadFile(uri: string, fileName?: string): Promise<string
   return json.data.url as string;
 }
 
-export async function pickAndUploadDocument(): Promise<string | null> {
+export async function pickAndUploadDocument(documentType?: string): Promise<string | null> {
   try {
     const ImagePicker = await import('expo-image-picker');
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -36,7 +43,7 @@ export async function pickAndUploadDocument(): Promise<string | null> {
       quality: 0.8,
     });
     if (result.canceled || !result.assets[0]?.uri) return null;
-    return uploadFile(result.assets[0].uri);
+    return uploadFile(result.assets[0].uri, undefined, documentType);
   } catch {
     return null;
   }

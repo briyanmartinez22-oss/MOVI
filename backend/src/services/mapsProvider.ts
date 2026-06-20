@@ -18,6 +18,7 @@ export type RouteResult = {
   distanceKm: number;
   durationMinutes: number;
   polyline?: string;
+  path?: Coordinates[];
   provider: 'fallback' | 'google' | 'mapbox';
 };
 
@@ -40,6 +41,48 @@ function haversineKm(a: Coordinates, b: Coordinates): number {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function decodePolyline(encoded: string): Coordinates[] {
+  const coordinates: Coordinates[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let shift = 0;
+    let result = 0;
+    let byte: number;
+
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += deltaLat;
+
+    shift = 0;
+    result = 0;
+
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += deltaLng;
+
+    coordinates.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+  }
+
+  return coordinates;
+}
+
+function buildStraightPath(origin: Coordinates, destination: Coordinates): Coordinates[] {
+  return [origin, destination];
 }
 
 function parseCoordinateQuery(query: string): GeocodeResult | null {
@@ -109,6 +152,7 @@ function createFallbackProvider(): MapsProvider {
       return {
         distanceKm,
         durationMinutes: Math.max(3, Math.round(distanceKm * 3)),
+        path: buildStraightPath(origin, destination),
         provider: 'fallback',
       };
     },
@@ -122,7 +166,33 @@ async function createGoogleProvider(): Promise<MapsProvider> {
     const qs = new URLSearchParams({ ...params, key: apiKey });
     const res = await fetch(`https://maps.googleapis.com/maps/api/${path}?${qs}`);
     if (!res.ok) throw new Error(`Google Maps API error (${res.status})`);
-    return res.json() as Promise<Record<string, unknown>>;
+    const data = (await res.json()) as Record<string, unknown>;
+    const status = data.status as string | undefined;
+    if (status && status !== 'OK' && status !== 'ZERO_RESULTS') {
+      throw new Error(`Google Maps ${path}: ${status}`);
+    }
+    return data;
+  }
+
+  async function getGoogleRoute(origin: Coordinates, destination: Coordinates): Promise<RouteResult> {
+    const data = await googleFetch('directions/json', {
+      origin: `${origin.latitude},${origin.longitude}`,
+      destination: `${destination.latitude},${destination.longitude}`,
+      region: 'sv',
+      mode: 'driving',
+    });
+    const routes = (data.routes as Array<Record<string, unknown>>) ?? [];
+    const leg = (routes[0]?.legs as Array<Record<string, unknown>>)?.[0];
+    const distanceM = (leg?.distance as { value?: number })?.value ?? 0;
+    const durationS = (leg?.duration as { value?: number })?.value ?? 0;
+    const encodedPolyline = (routes[0]?.overview_polyline as { points?: string })?.points;
+    return {
+      distanceKm: distanceM / 1000,
+      durationMinutes: Math.max(1, Math.round(durationS / 60)),
+      polyline: encodedPolyline,
+      path: encodedPolyline ? decodePolyline(encodedPolyline) : buildStraightPath(origin, destination),
+      provider: 'google',
+    };
   }
 
   return {
@@ -131,7 +201,11 @@ async function createGoogleProvider(): Promise<MapsProvider> {
       const direct = parseCoordinateQuery(query);
       if (direct) return [direct];
 
-      const data = await googleFetch('geocode/json', { address: query });
+      const data = await googleFetch('geocode/json', {
+        address: query,
+        region: 'sv',
+        components: 'country:SV',
+      });
       const results = (data.results as Array<Record<string, unknown>>) ?? [];
       return results.slice(0, 5).map((r) => {
         const loc = (r.geometry as { location: { lat: number; lng: number } }).location;
@@ -145,32 +219,19 @@ async function createGoogleProvider(): Promise<MapsProvider> {
     async reverseGeocode(coords) {
       const data = await googleFetch('geocode/json', {
         latlng: `${coords.latitude},${coords.longitude}`,
+        region: 'sv',
       });
       const results = (data.results as Array<{ formatted_address?: string }>) ?? [];
       return results[0]?.formatted_address ?? `Ubicación (${coords.latitude}, ${coords.longitude})`;
     },
     async calculateDistanceKm(origin, destination) {
-      return haversineKm(origin, destination);
+      const route = await getGoogleRoute(origin, destination);
+      return route.distanceKm;
     },
     calculateEtaMinutes(distanceKm) {
       return Math.max(3, Math.round(distanceKm * 3));
     },
-    async getRoute(origin, destination) {
-      const data = await googleFetch('directions/json', {
-        origin: `${origin.latitude},${origin.longitude}`,
-        destination: `${destination.latitude},${destination.longitude}`,
-      });
-      const routes = (data.routes as Array<Record<string, unknown>>) ?? [];
-      const leg = (routes[0]?.legs as Array<Record<string, unknown>>)?.[0];
-      const distanceM = (leg?.distance as { value?: number })?.value ?? 0;
-      const durationS = (leg?.duration as { value?: number })?.value ?? 0;
-      return {
-        distanceKm: distanceM / 1000,
-        durationMinutes: Math.max(1, Math.round(durationS / 60)),
-        polyline: (routes[0]?.overview_polyline as { points?: string })?.points,
-        provider: 'google',
-      };
-    },
+    getRoute: getGoogleRoute,
   };
 }
 
@@ -225,6 +286,7 @@ async function createMapboxProvider(): Promise<MapsProvider> {
         distanceKm: (route?.distance ?? 0) / 1000,
         durationMinutes: Math.max(1, Math.round((route?.duration ?? 0) / 60)),
         polyline: route?.geometry,
+        path: route?.geometry ? decodePolyline(route.geometry) : buildStraightPath(origin, destination),
         provider: 'mapbox',
       };
     },

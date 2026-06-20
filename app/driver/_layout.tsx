@@ -9,6 +9,8 @@ export default function DriverLayout() {
         <Stack.Screen name="history" />
         <Stack.Screen name="trip-active" />
         <Stack.Screen name="subscription" />
+        <Stack.Screen name="verification-status" />
+        <Stack.Screen name="rating" />
         <Stack.Screen name="navigate-passenger" />
         <Stack.Screen name="navigate-destination" />
       </Stack>

@@ -75,6 +75,16 @@ export default function PermissionsScreen() {
         return;
       }
       if (await hasPermissionsAccepted(pendingFlow)) {
+        if (nextRoute === '/auth/otp' && forwardParams.phone) {
+          const otpRes = await requestOtp(forwardParams.phone);
+          if (!otpRes.ok) {
+            if (!cancelled) {
+              setError(otpRes.error ?? 'No se pudo enviar el OTP');
+              setChecking(false);
+            }
+            return;
+          }
+        }
         router.replace({ pathname: nextRoute as never, params: forwardParams });
         return;
       }

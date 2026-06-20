@@ -17,7 +17,8 @@ import { showSuccess } from '../../src/utils/feedback';
 import { useTrip } from '../../src/context/TripContext';
 import { buildRouteFromPlaces, buildTripMarkers } from '../../src/utils/mapHelpers';
 import { sortOffers } from '../../src/utils/platform';
-import { getMinPrice } from '../../src/utils/pricing';
+import { getMinPriceForTrip } from '../../src/utils/pricing';
+import { getCategoryModeLabel } from '../../src/data/serviceCategories';
 import { colors, typography, spacing } from '../../src/theme';
 
 export default function OffersScreen() {
@@ -49,6 +50,10 @@ export default function OffersScreen() {
     activeTrip.offers.filter((offer) => offer.status === 'pending')
   );
   const accepted = activeTrip.acceptedOffer;
+  const categoryLabel = getCategoryModeLabel(
+    activeTrip.serviceCategoryId ?? 'mototaxi',
+    activeTrip.tripType
+  );
 
   const handleAccept = (offerId: string) => {
     acceptOffer(offerId);
@@ -104,12 +109,16 @@ export default function OffersScreen() {
             <>
               <Text style={styles.title}>Ofertas disponibles</Text>
               <Text style={styles.subtitle}>
-                Compara y elige la mejor opción para tu viaje
+                {categoryLabel} · Compara y elige la mejor opción
               </Text>
 
               <PriceStepper
-                value={activeTrip.passengerOfferPrice ?? getMinPrice(activeTrip.tripType)}
+                value={
+                  activeTrip.passengerOfferPrice ??
+                  getMinPriceForTrip(activeTrip.tripType, activeTrip.serviceCategoryId)
+                }
                 tripType={activeTrip.tripType}
+                categoryId={activeTrip.serviceCategoryId}
                 onChange={updatePassengerOfferPrice}
               />
 

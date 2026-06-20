@@ -4,12 +4,29 @@ const port = Number(process.env.PORT ?? 3001);
 const databaseUrl =
   process.env.DATABASE_URL ?? 'postgresql://movi:movi@localhost:5432/movi?schema=public';
 
+function hasCloudinaryCredentials(): boolean {
+  return Boolean(
+    process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET
+  );
+}
+
+function hasS3Credentials(): boolean {
+  const bucket = process.env.S3_BUCKET ?? process.env.AWS_S3_BUCKET;
+  const accessKey = process.env.S3_ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID;
+  const secretKey = process.env.S3_SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY;
+  return Boolean(bucket && accessKey && secretKey);
+}
+
 function resolveStorageProvider(): 'local' | 's3' | 'cloudinary' {
   const explicit = process.env.STORAGE_PROVIDER?.toLowerCase();
   if (explicit === 'cloudinary' || explicit === 's3' || explicit === 'local') {
     return explicit;
   }
   if (process.env.STORAGE_MODE === 's3') return 's3';
+  if (hasCloudinaryCredentials()) return 'cloudinary';
+  if (hasS3Credentials()) return 's3';
   return 'local';
 }
 
@@ -54,6 +71,7 @@ export const env = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
+  cloudinaryFolder: process.env.CLOUDINARY_FOLDER?.replace(/^\/+|\/+$/g, '') || 'movi',
   awsS3Bucket: process.env.S3_BUCKET ?? process.env.AWS_S3_BUCKET,
   awsAccessKeyId: process.env.S3_ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID,
   awsSecretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY,
@@ -92,13 +110,11 @@ export function assertEnv() {
 }
 
 export function isCloudinaryConfigured(): boolean {
-  return Boolean(
-    env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret
-  );
+  return hasCloudinaryCredentials();
 }
 
 export function isS3Configured(): boolean {
-  return Boolean(env.awsS3Bucket && env.awsAccessKeyId && env.awsSecretAccessKey);
+  return hasS3Credentials();
 }
 
 export function isTwilioConfigured(): boolean {

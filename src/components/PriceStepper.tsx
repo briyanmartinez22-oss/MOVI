@@ -1,16 +1,18 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { TripType } from '../types';
-import { formatPrice, getMinPrice, incrementPrice, decrementPrice } from '../utils/pricing';
+import type { ServiceCategoryId } from '../data/serviceCategories';
+import { formatPrice, getMinPriceForTrip, incrementPrice, decrementPrice } from '../utils/pricing';
 import { colors, typography, spacing, radius } from '../theme';
 
 type Props = {
   value: number;
   tripType: TripType;
+  categoryId?: ServiceCategoryId;
   onChange: (price: number) => void;
 };
 
-export function PriceStepper({ value, tripType, onChange }: Props) {
-  const min = getMinPrice(tripType);
+export function PriceStepper({ value, tripType, categoryId, onChange }: Props) {
+  const min = getMinPriceForTrip(tripType, categoryId);
   const canDecrease = value > min;
   const canIncrease = value < 10;
 
@@ -20,7 +22,7 @@ export function PriceStepper({ value, tripType, onChange }: Props) {
       <View style={styles.row}>
         <TouchableOpacity
           style={[styles.stepBtn, !canDecrease && styles.stepBtnDisabled]}
-          onPress={() => onChange(decrementPrice(value, tripType))}
+          onPress={() => onChange(decrementPrice(value, tripType, categoryId))}
           disabled={!canDecrease}
         >
           <Text style={styles.stepBtnText}>- $0.50</Text>
@@ -30,7 +32,7 @@ export function PriceStepper({ value, tripType, onChange }: Props) {
 
         <TouchableOpacity
           style={[styles.stepBtn, !canIncrease && styles.stepBtnDisabled]}
-          onPress={() => onChange(incrementPrice(value, tripType))}
+          onPress={() => onChange(incrementPrice(value, tripType, categoryId))}
           disabled={!canIncrease}
         >
           <Text style={styles.stepBtnText}>+ $0.50</Text>

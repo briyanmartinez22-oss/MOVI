@@ -7,6 +7,7 @@ import { DemandZone } from '../types/models';
 export interface MapRoute {
   origin: { latitude: number; longitude: number };
   destination: { latitude: number; longitude: number };
+  path?: Array<{ latitude: number; longitude: number }>;
 }
 
 type Props = {
@@ -200,10 +201,12 @@ function buildMapHtml(
       });
 
       if (data.route) {
-        const coordinates = [
-          [data.route.origin.longitude, data.route.origin.latitude],
-          [data.route.destination.longitude, data.route.destination.latitude]
-        ];
+        const coordinates = data.route.path?.length
+          ? data.route.path.map((point) => [point.longitude, point.latitude])
+          : [
+              [data.route.origin.longitude, data.route.origin.latitude],
+              [data.route.destination.longitude, data.route.destination.latitude],
+            ];
         map.addSource('route', {
           type: 'geojson',
           data: { type: 'Feature', geometry: { type: 'LineString', coordinates } }
