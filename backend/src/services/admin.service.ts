@@ -143,6 +143,8 @@ export async function listAdminPassengers() {
     phoneNumber: u.phoneNumber,
     duiNumber: u.duiNumber,
     phoneVerified: u.phoneVerified,
+    accountStatus: u.accountStatus,
+    mvpStatus: u.accountStatus === 'suspended' ? 'SUSPENDED' : 'VERIFIED',
     totalTrips: tripCountMap.get(u.id) ?? 0,
     completedTrips: completedMap.get(u.id) ?? 0,
     createdAt: u.createdAt.toISOString(),
@@ -156,4 +158,128 @@ export async function listAdminRequests() {
     take: 100,
   });
   return Promise.all(trips.map((t) => serializeTrip(t.id)));
+}
+
+export async function listAdminOwners() {
+  const owners = await prisma.owner.findMany({
+    include: { user: true, vehicles: true, drivers: true },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+  return owners.map((o) => ({
+    id: o.id,
+    userId: o.userId,
+    name: o.name,
+    phone: o.phone,
+    dui: o.dui,
+    status: o.status,
+    mvpStatus: mapOwnerMvpStatus(o.status),
+    vehicleCount: o.vehicles.length,
+    driverCount: o.drivers.length,
+    createdAt: o.createdAt.toISOString(),
+  }));
+}
+
+export async function listAdminBusinesses() {
+  const businesses = await prisma.business.findMany({
+    include: { user: true },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+  return businesses.map((b) => ({
+    id: b.id,
+    userId: b.userId,
+    businessName: b.businessName,
+    businessType: b.businessType,
+    businessPhone: b.businessPhone,
+    nit: b.nit,
+    status: b.status,
+    mvpStatus:
+      b.status === 'approved'
+        ? 'VERIFIED'
+        : b.status === 'suspended'
+          ? 'SUSPENDED'
+          : b.status === 'rejected'
+            ? 'REJECTED'
+            : 'PENDING',
+    rating: b.rating,
+    totalDeliveries: b.totalDeliveries,
+    addressLabel: b.addressLabel,
+    createdAt: b.createdAt.toISOString(),
+  }));
+}
+
+export async function listAdminDeliveries() {
+  const deliveries = await prisma.delivery.findMany({
+    include: {
+      trip: {
+        select: {
+          id: true,
+          passengerName: true,
+          lifecycleStatus: true,
+          originJson: true,
+          destinationJson: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+  return deliveries.map((d) => {
+    const origin = parseJsonField<{ name?: string }>(d.trip.originJson, {});
+    const destination = parseJsonField<{ name?: string }>(d.trip.destinationJson, {});
+    return {
+      id: d.id,
+      tripId: d.tripId,
+      recipientName: d.recipientName,
+      recipientPhone: d.recipientPhone,
+      packageCount: d.packageCount,
+      weightKg: d.weightKg,
+      trip: {
+        id: d.trip.id,
+        passengerName: d.trip.passengerName,
+        lifecycleStatus: d.trip.lifecycleStatus,
+        originName: origin.name ?? 'Origen',
+        destinationName: destination.name ?? 'Destino',
+        createdAt: d.trip.createdAt.toISOString(),
+      },
+      createdAt: d.createdAt.toISOString(),
+    };
+  });
+}
+
+export async function listAdminSubscriptions() {
+  const subs = await prisma.driverSubscription.findMany({
+    include: {
+      driver: { select: { id: true, name: true, phone: true } },
+    },
+    orderBy: { registeredAt: 'desc' },
+    take: 200,
+  });
+  return subs.map((s) => ({
+    id: s.id,
+    driverId: s.driverId,
+    driverName: s.driver.name,
+    driverPhone: s.driver.phone,
+    status: s.status,
+    monthlyAmountUsd: s.monthlyAmountUsd,
+    registeredAt: s.registeredAt.toISOString(),
+    nextBillingAt: s.nextBillingAt.toISOString(),
+    lastPaidAt: s.lastPaidAt?.toISOString() ?? null,
+  }));
+}
+
+export async function listAdminStaff() {
+  const profiles = await prisma.adminStaffProfile.findMany({
+    include: { user: { select: { id: true, fullName: true, phoneNumber: true, role: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  return profiles.map((p) => ({
+    userId: p.userId,
+    staffRole: p.staffRole,
+    fullName: p.user.fullName,
+    phoneNumber: p.user.phoneNumber,
+    createdAt: p.createdAt.toISOString(),
+  }));
 }

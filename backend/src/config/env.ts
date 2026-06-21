@@ -48,6 +48,13 @@ function resolveOtpProvider(): 'demo' | 'twilio' {
   return 'demo';
 }
 
+function isDemoOtpEnabled(): boolean {
+  return (
+    (process.env.NODE_ENV ?? 'development') === 'development' &&
+    process.env.DEMO_OTP_ENABLED === 'true'
+  );
+}
+
 function resolvePushProvider(): 'none' | 'expo' | 'firebase' {
   const explicit = process.env.PUSH_PROVIDER?.toLowerCase();
   if (explicit === 'expo' || explicit === 'firebase' || explicit === 'none') return explicit;
@@ -83,6 +90,7 @@ export const env = {
   mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN,
 
   otpProvider: resolveOtpProvider(),
+  demoOtpEnabled: isDemoOtpEnabled(),
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
   twilioFromNumber: process.env.TWILIO_FROM_NUMBER,
@@ -166,10 +174,16 @@ export function getResolvedMapsMode(): 'fallback' | 'google' | 'mapbox' {
 
 export function getResolvedOtpMode(): 'demo' | 'twilio' {
   if (env.otpProvider === 'demo') {
-    return env.nodeEnv === 'production' ? 'twilio' : 'demo';
+    if (env.nodeEnv === 'production') return 'twilio';
+    return env.demoOtpEnabled ? 'demo' : 'twilio';
   }
   if (isTwilioConfigured()) return 'twilio';
+  if (env.demoOtpEnabled && env.nodeEnv !== 'production') return 'demo';
   return env.nodeEnv === 'production' ? 'twilio' : 'demo';
+}
+
+export function isDemoOtpAllowed(): boolean {
+  return env.demoOtpEnabled && env.nodeEnv === 'development';
 }
 
 export function getResolvedPushMode(): 'none' | 'expo' | 'firebase' {

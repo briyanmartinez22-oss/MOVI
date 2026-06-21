@@ -14,6 +14,7 @@ const scripts = [
   'admin-security-qa-e2e.ts',
   'finance-qa-e2e.ts',
   'support-qa-e2e.ts',
+  'admin-entities-qa-e2e.ts',
 ];
 
 let failed = 0;
@@ -21,7 +22,10 @@ for (const script of scripts) {
   console.log(`\n>>> Running ${script}\n`);
   const result = spawnSync('tsx', [join(dir, script)], {
     stdio: 'inherit',
-    env: process.env,
+    env: {
+      ...process.env,
+      DEMO_OTP_ENABLED: process.env.DEMO_OTP_ENABLED ?? 'true',
+    },
   });
   if (result.status !== 0) failed += 1;
 }

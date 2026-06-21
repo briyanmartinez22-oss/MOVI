@@ -52,6 +52,10 @@ export async function loginWithOtp(phone: string, dui: string | undefined, code:
     return { ok: false as const, error: 'Usuario no registrado. Completa el registro.' };
   }
 
+  if (user.accountStatus === 'suspended') {
+    return { ok: false as const, error: 'Tu cuenta está suspendida. Contacta soporte.' };
+  }
+
   if (user.role !== 'passenger') {
     if (!dui?.trim()) {
       return { ok: false as const, error: 'El DUI es requerido para este tipo de cuenta.' };

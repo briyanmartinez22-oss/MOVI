@@ -58,3 +58,10 @@ export async function revokeRefreshToken(refreshToken: string) {
     data: { revokedAt: new Date() },
   });
 }
+
+export async function revokeAllRefreshTokensForUser(userId: string) {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}

@@ -5,6 +5,7 @@
  */
 import WebSocket from 'ws';
 import { loginAsSuperAdmin, req, API, ADMIN_QA_PHONE } from './admin-qa-auth';
+import { registerPassenger } from './qa-bootstrap';
 
 type StepResult = { step: string; status: 'PASS' | 'FAIL'; detail?: string };
 const results: StepResult[] = [];
@@ -68,12 +69,14 @@ async function run() {
   const endpoints: Array<[string, string]> = [
     ['3. GET /admin/drivers', '/admin/drivers'],
     ['4. GET /admin/passengers', '/admin/passengers'],
-    ['5. GET /admin/ratings', '/admin/ratings'],
-    ['6. GET /admin/operations-live/snapshot', '/admin/operations-live/snapshot'],
-    ['7. GET /admin/support/tickets', '/admin/support/tickets'],
-    ['8. GET /admin/finance/summary', '/admin/finance/summary'],
-    ['9. GET /admin/security/summary', '/admin/security/summary'],
-    ['10. GET /admin/audit', '/admin/audit'],
+    ['5. GET /admin/owners', '/admin/owners'],
+    ['6. GET /admin/businesses', '/admin/businesses'],
+    ['7. GET /admin/ratings', '/admin/ratings'],
+    ['8. GET /admin/operations-live/snapshot', '/admin/operations-live/snapshot'],
+    ['9. GET /admin/support/tickets', '/admin/support/tickets'],
+    ['10. GET /admin/finance/summary', '/admin/finance/summary'],
+    ['11. GET /admin/security/summary', '/admin/security/summary'],
+    ['12. GET /admin/audit', '/admin/audit'],
   ];
 
   for (const [label, path] of endpoints) {
@@ -81,8 +84,25 @@ async function run() {
     record(label, res.status === 200, res.json.error);
   }
 
+  let passengers = await req('/admin/passengers', undefined, token);
+  let firstPassenger = passengers.json.data?.passengers?.[0] as { id?: string } | undefined;
+  if (!firstPassenger?.id) {
+    const created = await registerPassenger('QA Beta Closed Passenger');
+    firstPassenger = { id: created.id };
+    passengers = await req('/admin/passengers', undefined, token);
+  }
+  if (firstPassenger?.id) {
+    const suspend = await req(`/admin/passengers/${firstPassenger.id}/suspend`, {}, token);
+    record('13. POST /admin/passengers/:id/suspend', suspend.status === 201 || suspend.status === 200, suspend.json.error);
+    const reactivate = await req(`/admin/passengers/${firstPassenger.id}/reactivate`, {}, token);
+    record('14. POST /admin/passengers/:id/reactivate', reactivate.status === 201 || reactivate.status === 200, reactivate.json.error);
+  } else {
+    record('13. Entity action suspend', false, 'Sin pasajeros en BD');
+    record('14. Entity action reactivate', false, 'Sin pasajeros en BD');
+  }
+
   const wsOk = token ? await testAdminWebSocket(token) : false;
-  record('11. WebSocket subscribe_admin_ops', wsOk);
+  record('15. WebSocket subscribe_admin_ops', wsOk);
 
   const pass = results.filter((r) => r.status === 'PASS').length;
   const fail = results.filter((r) => r.status === 'FAIL').length;

@@ -4,6 +4,7 @@ import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { HelpVisibilityProvider, useHelpVisibility } from '../context/HelpVisibilityContext';
+import { useAdminStaffRole } from '../hooks/useAdminStaffRole';
 import { logDiagnostic } from '../services/diagnosticsService';
 import { isDevDiagnosticsEnabled } from '../utils/devMode';
 import { useKeyboardDismissOnNavigate } from '../hooks/useKeyboardDismiss';
@@ -20,7 +21,7 @@ function NavigationKeyboardGuard({ children }: Props) {
 
 type BoundaryState = { hasError: boolean; message: string };
 
-class DiagnosticsErrorBoundary extends Component<Props, BoundaryState> {
+class DiagnosticsErrorBoundary extends Component<Props & { diagnosticsEnabled: boolean }, BoundaryState> {
   state: BoundaryState = { hasError: false, message: '' };
 
   static getDerivedStateFromError(error: Error): BoundaryState {
@@ -28,7 +29,7 @@ class DiagnosticsErrorBoundary extends Component<Props, BoundaryState> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    if (!isDevDiagnosticsEnabled()) return;
+    if (!this.props.diagnosticsEnabled) return;
     const wrapped = new Error(error.message);
     wrapped.stack = info.componentStack ?? error.stack;
     logDiagnostic({ error: wrapped, route: 'error-boundary' });
@@ -79,8 +80,11 @@ function FloatingHelpRestore() {
 }
 
 function AppShellInner({ children }: Props) {
+  const { staffRole } = useAdminStaffRole();
+  const diagnosticsEnabled = isDevDiagnosticsEnabled(staffRole);
+
   return (
-    <DiagnosticsErrorBoundary>
+    <DiagnosticsErrorBoundary diagnosticsEnabled={diagnosticsEnabled}>
       <NavigationKeyboardGuard>
         <DiagnosticRouteLogger>
           <View style={styles.root}>
@@ -88,7 +92,7 @@ function AppShellInner({ children }: Props) {
             <FloatingHelpBubble />
             <FloatingHelpRestore />
           </View>
-          {isDevDiagnosticsEnabled() ? <DiagnosticsPanel /> : null}
+          {diagnosticsEnabled ? <DiagnosticsPanel /> : null}
         </DiagnosticRouteLogger>
       </NavigationKeyboardGuard>
     </DiagnosticsErrorBoundary>

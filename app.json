@@ -13,15 +13,32 @@
       "backgroundColor": "#000000"
     },
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.movi.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "MOVI usa tu ubicación para solicitar viajes y mostrar conductores cercanos.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "MOVI usa tu ubicación para el seguimiento de viajes en curso.",
+        "NSCameraUsageDescription": "MOVI usa la cámara para verificar documentos y fotos de perfil.",
+        "NSPhotoLibraryUsageDescription": "MOVI accede a tus fotos para subir documentos y comprobantes.",
+        "UIBackgroundModes": ["location", "remote-notification"]
+      }
     },
     "android": {
+      "package": "com.movi.app",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -32,16 +49,34 @@
       "expo-router",
       "expo-font",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MOVI usa tu ubicación para solicitar viajes y mostrar conductores cercanos."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
           "color": "#E10600",
           "sounds": []
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MOVI accede a tus fotos para subir documentos y comprobantes.",
+          "cameraPermission": "MOVI usa la cámara para verificar documentos y fotos de perfil."
+        }
       ]
     ],
     "extra": {
-      "EXPO_PUBLIC_USE_MOCK_API": "false"
+      "EXPO_PUBLIC_USE_MOCK_API": "false",
+      "EXPO_PUBLIC_API_URL": "https://movi-production-ef3b.up.railway.app",
+      "EXPO_PUBLIC_WS_URL": "wss://movi-production-ef3b.up.railway.app/ws",
+      "eas": {
+        "projectId": "movi-beta-el-salvador"
+      }
     }
   }
 }

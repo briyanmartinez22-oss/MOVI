@@ -1,5 +1,8 @@
 import type { AdminStaffRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { canAccessStaffRole as checkStaffRole } from './admin-permissions.service';
+
+export { canAccess, type AdminPermission, type AdminActor } from './admin-permissions.service';
 
 const ROLE_RANK: Record<AdminStaffRole, number> = {
   SUPER_ADMIN: 100,
@@ -17,12 +20,9 @@ export async function getAdminStaffRole(userId: string): Promise<AdminStaffRole>
   return 'OPS_ADMIN';
 }
 
-export function canAccessStaffRole(
-  actual: AdminStaffRole,
-  allowed: AdminStaffRole[]
-): boolean {
+export function canAccessStaffRole(actual: AdminStaffRole, allowed: AdminStaffRole[]): boolean {
+  if (checkStaffRole(actual, allowed)) return true;
   if (actual === 'SUPER_ADMIN') return true;
-  if (allowed.includes(actual)) return true;
   return allowed.some((r) => ROLE_RANK[actual] >= ROLE_RANK[r]);
 }
 

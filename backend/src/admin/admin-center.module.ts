@@ -9,7 +9,9 @@ import { FinanceController } from './finance.controller';
 import { OperationsLiveController } from './operations-live.controller';
 import { SecurityController } from './security.controller';
 import { SupportController } from './support.controller';
+import { SuperAdminController } from './super-admin.controller';
 import { TripsAdminController } from './trips-admin.controller';
+import { AdminEntitiesController } from './admin-entities.controller';
 import { AdminStaffGuard } from '../common/guards/admin-staff.guard';
 
 @Module({
@@ -25,6 +27,8 @@ import { AdminStaffGuard } from '../common/guards/admin-staff.guard';
     SecurityController,
     AuditController,
     TripsAdminController,
+    SuperAdminController,
+    AdminEntitiesController,
   ],
   providers: [AdminStaffGuard],
 })

@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma';
 import { env, isTwilioVerifyConfigured } from '../config/env';
 import { signOtpVerificationToken, verifyOtpVerificationToken } from '../lib/jwt';
 import { isValidMoviPhone, normalizePhone } from '../utils/phone';
-import { checkRateLimit } from './rateLimit.service';
+import { checkRateLimit, resetRateLimit } from './rateLimit.service';
 import { generateOtpCode, getOtpProvider } from './otpProvider';
 import { findUserByPhone } from './ensure-super-admin.service';
 
@@ -27,8 +27,12 @@ export async function requestOtp(phone: string) {
     return { ok: false as const, error: 'Número de teléfono inválido' };
   }
 
-  if (!checkRateLimit(`otp:${phoneNumber}`, OTP_RATE_MAX, OTP_RATE_WINDOW_MS)) {
-    return { ok: false as const, error: 'Demasiados intentos. Espera 15 minutos.' };
+  if (!env.demoOtpEnabled) {
+    if (!checkRateLimit(`otp:${phoneNumber}`, OTP_RATE_MAX, OTP_RATE_WINDOW_MS)) {
+      return { ok: false as const, error: 'Demasiados intentos. Espera 15 minutos.' };
+    }
+  } else {
+    resetRateLimit(`otp:${phoneNumber}`);
   }
 
   const otp = await getOtpProvider();
@@ -75,6 +79,10 @@ export async function verifyOtp(phone: string, code: string) {
   }
 
   if (env.nodeEnv === 'production' && code === env.demoOtpCode) {
+    return { ok: false as const, error: 'Código OTP inválido.' };
+  }
+
+  if (!env.demoOtpEnabled && code === env.demoOtpCode) {
     return { ok: false as const, error: 'Código OTP inválido.' };
   }
 

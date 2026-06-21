@@ -9,14 +9,18 @@ import { HelpButton } from './HelpButton';
 import { KeyboardAwareScreen } from './KeyboardAwareScreen';
 import { LoadingTimeoutBanner } from './LoadingTimeoutBanner';
 import { useAuth } from '../context/AuthContext';
+import { useAdminStaffRole } from '../hooks/useAdminStaffRole';
 import { useAsyncAction } from '../utils/asyncAction';
 import { DEMO_OTP_CODE } from '../services/otpService';
+import { isDemoOtpHintEnabled, isInternalToolsEnabled } from '../utils/devMode';
 import { FIELD_HINTS } from '../data/fieldHints';
 import { colors, typography, spacing } from '../theme';
 
 export function LoginScreenView() {
   const router = useRouter();
   const { requestOtp } = useAuth();
+  const { staffRole } = useAdminStaffRole();
+  const showInternalTools = isInternalToolsEnabled(staffRole);
   const [phone, setPhone] = useState('');
   const [dui, setDui] = useState('');
   const [error, setError] = useState('');
@@ -46,7 +50,7 @@ export function LoginScreenView() {
     <SafeAreaView style={styles.container}>
       <View style={styles.helpRow}>
         <HelpButton />
-        {__DEV__ ? (
+        {showInternalTools ? (
           <View style={styles.devLinks}>
             <Text style={styles.devLink} onPress={() => router.push('/dev/learning')}>
               Conocer MOVI
@@ -78,7 +82,7 @@ export function LoginScreenView() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton title="Continuar" onPress={handleContinue} loading={loading} />
-        {__DEV__ ? <Text style={styles.demo}>OTP demo: {DEMO_OTP_CODE}</Text> : null}
+        {isDemoOtpHintEnabled() ? <Text style={styles.demo}>OTP demo: {DEMO_OTP_CODE}</Text> : null}
       </KeyboardAwareScreen>
     </SafeAreaView>
   );

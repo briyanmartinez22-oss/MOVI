@@ -6,11 +6,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const API = process.env.API_URL ?? 'http://localhost:3001';
-const OTP = process.env.DEMO_OTP_CODE ?? '123456';
-const ROOT = join(__dirname, '..', '..');
+import { loginAsSuperAdmin } from './admin-qa-auth';
 
-type StepResult = { step: string; status: 'PASS' | 'FAIL'; detail?: string };
+const API = process.env.API_URL ?? 'http://localhost:3001';
+const ROOT = join(__dirname, '..', '..'); = { step: string; status: 'PASS' | 'FAIL'; detail?: string };
 const results: StepResult[] = [];
 
 const METRIC_ENDPOINTS = [
@@ -37,11 +36,7 @@ async function req(path: string, body?: unknown, token?: string, method?: string
 }
 
 async function loginAsAdmin(): Promise<string> {
-  await req('/auth/request-otp', { phone: '70801111' });
-  await req('/auth/verify-otp', { phone: '70801111', code: OTP });
-  const login = await req('/auth/login', { phone: '70801111', dui: '00000000-0', code: OTP });
-  if (!login.json.ok) throw new Error(`Admin login failed: ${login.json.error}`);
-  return login.json.data.authToken as string;
+  return loginAsSuperAdmin();
 }
 
 function record(step: string, ok: boolean, detail?: string) {

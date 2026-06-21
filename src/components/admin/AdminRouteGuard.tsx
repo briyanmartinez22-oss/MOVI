@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { usePathname } from 'expo-router';
 import { canAccessAdminRoute } from '../../config/adminPermissions';
-import { useAdminStaffRole } from '../../hooks/useAdminStaffRole';
+import { useAdminActor } from '../../hooks/useAdminPermission';
 import { colors, typography, spacing } from '../../theme';
 
 type Props = {
@@ -22,7 +22,7 @@ export function AdminUnauthorized() {
 
 export function AdminRouteGuard({ children }: Props) {
   const pathname = usePathname();
-  const { staffRole, loading } = useAdminStaffRole();
+  const { actor, loading } = useAdminActor();
 
   if (loading) {
     return (
@@ -32,7 +32,7 @@ export function AdminRouteGuard({ children }: Props) {
     );
   }
 
-  if (!staffRole || !canAccessAdminRoute(pathname, staffRole)) {
+  if (!actor.staffRole || !canAccessAdminRoute(pathname, actor)) {
     return <AdminUnauthorized />;
   }
 

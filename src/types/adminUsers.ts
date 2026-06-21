@@ -27,9 +27,21 @@ export type AdminPassengerRecord = {
   phoneNumber: string;
   duiNumber: string | null;
   phoneVerified: boolean;
+  accountStatus?: string;
+  mvpStatus?: string;
   totalTrips: number;
   completedTrips: number;
   createdAt: string;
+};
+
+export type AdminPassengerDetail = AdminPassengerRecord & {
+  recentTrips?: Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    passengerOfferPrice: number | null;
+    distanceKm: number;
+  }>;
 };
 
 export type AdminRatingRecord = {

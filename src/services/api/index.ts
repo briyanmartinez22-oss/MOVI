@@ -33,7 +33,7 @@ import { persistSession, logout as clearAuthSession } from '../authService';
 import * as mock from '../mockApi/mockImpl';
 import * as mockStore from '../mockStore';
 import { useMockApi } from './config';
-import { apiFetch, apiGet, apiPost, apiPatch } from './client';
+import { apiFetch, apiGet, apiPost, apiPatch, apiDelete } from './client';
 import {
   getInvitePreviewFromCache,
   resolveCurrentProfiles as resolveCachedProfiles,
@@ -301,12 +301,166 @@ export async function fetchAdminPassengers() {
   return res.ok ? res.data?.passengers ?? [] : [];
 }
 
+export async function fetchAdminPassengerDetail(passengerId: string) {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminUsers').AdminPassengerDetail>(
+    `/admin/passengers/${passengerId}`
+  );
+  return res.ok ? res.data ?? null : null;
+}
+
+export async function updateAdminPassenger(
+  passengerId: string,
+  body: { fullName?: string; duiNumber?: string | null; phoneNumber?: string }
+): Promise<ApiResponse<import('../../types/adminUsers').AdminPassengerRecord>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPatch<import('../../types/adminUsers').AdminPassengerRecord>(
+    `/admin/passengers/${passengerId}`,
+    body
+  );
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al editar');
+}
+
+export async function suspendAdminPassenger(
+  passengerId: string
+): Promise<ApiResponse<{ id: string }>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<{ id: string }>(`/admin/passengers/${passengerId}/suspend`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al suspender');
+}
+
+export async function reactivateAdminPassenger(
+  passengerId: string
+): Promise<ApiResponse<{ id: string }>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<{ id: string }>(`/admin/passengers/${passengerId}/reactivate`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al reactivar');
+}
+
+export async function deleteAdminPassenger(
+  passengerId: string
+): Promise<ApiResponse<{ deleted: boolean }>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiDelete<{ deleted: boolean }>(`/admin/passengers/${passengerId}`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al eliminar');
+}
+
+export async function reactivateDriver(
+  driverId: string
+): Promise<ApiResponse<DriverProfileRecord>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<DriverProfileRecord>(`/admin/drivers/${driverId}/reactivate`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al reactivar');
+}
+
+export async function deleteDriver(
+  driverId: string
+): Promise<ApiResponse<{ deleted: boolean }>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiDelete<{ deleted: boolean }>(`/admin/drivers/${driverId}`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al eliminar');
+}
+
+export async function reactivateOwner(ownerId: string): Promise<ApiResponse<Owner>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Owner>(`/admin/owners/${ownerId}/reactivate`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al reactivar');
+}
+
+export async function deleteOwner(ownerId: string): Promise<ApiResponse<{ deleted: boolean }>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiDelete<{ deleted: boolean }>(`/admin/owners/${ownerId}`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al eliminar');
+}
+
+export async function approveBusiness(
+  businessId: string
+): Promise<ApiResponse<Record<string, unknown>>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Record<string, unknown>>(`/admin/businesses/${businessId}/approve`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al aprobar');
+}
+
+export async function rejectBusiness(
+  businessId: string
+): Promise<ApiResponse<Record<string, unknown>>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Record<string, unknown>>(`/admin/businesses/${businessId}/reject`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al rechazar');
+}
+
+export async function suspendBusiness(
+  businessId: string
+): Promise<ApiResponse<Record<string, unknown>>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Record<string, unknown>>(`/admin/businesses/${businessId}/suspend`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al suspender');
+}
+
+export async function reactivateBusiness(
+  businessId: string
+): Promise<ApiResponse<Record<string, unknown>>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Record<string, unknown>>(`/admin/businesses/${businessId}/reactivate`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al reactivar');
+}
+
+export async function deleteBusiness(
+  businessId: string
+): Promise<ApiResponse<{ deleted: boolean }>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiDelete<{ deleted: boolean }>(`/admin/businesses/${businessId}`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al eliminar');
+}
+
 export async function fetchAdminRatingsList(limit = 50) {
   if (useMockApi()) return [];
   const res = await apiGet<{ ratings: import('../../types/adminUsers').AdminRatingRecord[] }>(
     `/admin/ratings?limit=${limit}`
   );
   return res.ok ? res.data?.ratings ?? [] : [];
+}
+
+export async function fetchAdminOwners() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ owners: Record<string, unknown>[] }>('/admin/owners');
+  return res.ok ? res.data?.owners ?? [] : [];
+}
+
+export async function fetchAdminBusinesses() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ businesses: Record<string, unknown>[] }>('/admin/businesses');
+  return res.ok ? res.data?.businesses ?? [] : [];
+}
+
+export async function fetchAdminDeliveries() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ deliveries: Record<string, unknown>[] }>('/admin/deliveries');
+  return res.ok ? res.data?.deliveries ?? [] : [];
+}
+
+export async function fetchAdminSubscriptions() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ subscriptions: Record<string, unknown>[] }>('/admin/subscriptions');
+  return res.ok ? res.data?.subscriptions ?? [] : [];
+}
+
+export async function fetchAdminStaffList() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ admins: Record<string, unknown>[] }>('/admin/admins');
+  return res.ok ? res.data?.admins ?? [] : [];
+}
+
+export async function fetchAdminSystemStatus() {
+  if (useMockApi()) return null;
+  const res = await apiGet<Record<string, unknown>>('/admin/system/status');
+  return res.ok ? res.data ?? null : null;
+}
+
+export async function fetchIntegrationsStatus() {
+  if (useMockApi()) return null;
+  const res = await apiGet<Record<string, unknown>>('/integrations/status');
+  return res.ok ? res.data ?? null : null;
 }
 
 export async function fetchAdminTrips(status?: string) {

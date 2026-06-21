@@ -36,12 +36,23 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "db:reset-beta": "cd backend && npm run db:reset-beta",
+    "qa:beta-final": "cd backend && npm run qa:beta-final",
+    "qa:integrations": "cd backend && npm run qa:integrations",
+    "qa:otp": "cd backend && npm run qa:otp",
+    "qa:maps": "cd backend && npm run qa:maps",
+    "qa:push": "cd backend && npm run qa:push",
+    "qa:beta-closed": "cd backend && npm run qa:beta-closed",
+    "build:android": "npx eas-cli build --platform android --profile preview --non-interactive",
+    "build:ios": "npx eas-cli build --platform ios --profile preview --non-interactive",
     "qa:operations-live": "cd backend && npm run qa:operations-live",
     "qa:dispatch": "cd backend && npm run qa:dispatch",
     "qa:admin-security": "cd backend && npm run qa:admin-security",
     "qa:finance": "cd backend && npm run qa:finance",
     "qa:support": "cd backend && npm run qa:support",
-    "qa:admin-all": "cd backend && npm run qa:admin-all"
+    "qa:admin-all": "cd backend && npm run qa:admin-all",
+    "qa:admin-entities": "cd backend && npm run qa:admin-entities",
+    "qa:db-integrity": "cd backend && npm run qa:db-integrity"
   },
   "private": true
 }

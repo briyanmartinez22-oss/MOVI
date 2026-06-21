@@ -4,6 +4,7 @@
  * Usage: npm run qa:dispatch
  */
 import { loginAsSuperAdmin, req, API } from './admin-qa-auth';
+import { createRequestedTrip, registerDriverWithVehicle, registerPassenger } from './qa-bootstrap';
 
 type StepResult = { step: string; status: 'PASS' | 'FAIL'; detail?: string };
 const results: StepResult[] = [];
@@ -22,13 +23,13 @@ async function run() {
   const trips = tripsRes.json.data?.trips as Array<{ id: string; lifecycleStatus?: string }> | undefined;
   record('GET trips', tripsRes.status === 200 && Array.isArray(trips));
 
-  const pending =
-    trips?.find((t) => t.lifecycleStatus === 'requested' || t.lifecycleStatus === 'offered') ??
-  trips?.[0];
+  const passenger = await registerPassenger('QA Dispatch Passenger');
+  await registerDriverWithVehicle(adminToken);
+  const trip = await createRequestedTrip(passenger.token);
+  const pending = { id: trip.id, lifecycleStatus: 'requested' as const };
+  record('Trip para dispatch (bootstrap)', true, trip.id);
 
-  if (!pending?.id) {
-    record('Trip para dispatch', false, 'Sin viajes en BD');
-  } else {
+  if (pending?.id) {
     const candidates = await req(
       `/admin/operations-live/trips/${pending.id}/dispatch-candidates`,
       undefined,
@@ -50,7 +51,7 @@ async function run() {
       );
       record(
         'POST dispatch responde ok',
-        dispatch.status === 200 && dispatch.json.ok === true,
+        (dispatch.status === 200 || dispatch.status === 201) && dispatch.json.ok === true,
         dispatch.json.error
       );
     } else {

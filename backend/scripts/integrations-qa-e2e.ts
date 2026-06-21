@@ -258,9 +258,17 @@ async function run() {
       distData.distanceKm > 0
   );
 
-  await req('/auth/request-otp', { phone: '78214898' });
-  const verify = await req('/auth/verify-otp', { phone: '78214898', code: OTP });
-  record('OTP demo funciona sin Twilio', verify.json.ok === true || verify.json.data?.verified === true);
+  const demoPhone = `79${String(Date.now()).slice(-6)}`;
+  await req('/auth/request-otp', { phone: demoPhone });
+  const verify = await req('/auth/verify-otp', { phone: demoPhone, code: OTP });
+  const demoAllowed = data?.otp?.demoAllowed === true;
+  record(
+    'OTP demo funciona sin Twilio',
+    demoAllowed
+      ? verify.json.ok === true || verify.json.data?.verified === true
+      : verify.status === 400 || verify.json.ok === false,
+    demoAllowed ? verify.json.error : 'skipped (prod/real OTP mode)'
+  );
 
   const unverifiedPhone = `73${String(Date.now()).slice(-6)}`;
   const blockedRegister = await req('/passengers/register', {

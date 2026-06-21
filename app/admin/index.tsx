@@ -8,14 +8,15 @@ import { DashboardSections } from '../../src/components/admin/DashboardSections'
 import { MoviLogo } from '../../src/components/MoviLogo';
 import { BrandTagline } from '../../src/components/BrandTagline';
 import { filterAdminMenuForRole } from '../../src/config/adminPermissions';
-import { useAdminStaffRole } from '../../src/hooks/useAdminStaffRole';
+import { useAdminActor } from '../../src/hooks/useAdminPermission';
 import { ADMIN_STAFF_ROLE_LABELS } from '../../src/types/adminStaff';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { staffRole } = useAdminStaffRole();
-  const links = staffRole ? filterAdminMenuForRole(staffRole) : [];
+  const { actor } = useAdminActor();
+  const links = filterAdminMenuForRole(actor);
+  const showLegacyMenu = actor.staffRole !== 'SUPER_ADMIN';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -25,26 +26,28 @@ export default function AdminDashboard() {
           <MoviLogo size="md" />
         </View>
         <BrandTagline variant="primary" />
-        {staffRole ? (
+        {actor.staffRole ? (
           <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{ADMIN_STAFF_ROLE_LABELS[staffRole]}</Text>
+            <Text style={styles.roleText}>{ADMIN_STAFF_ROLE_LABELS[actor.staffRole]}</Text>
           </View>
         ) : null}
         <Text style={styles.section}>Dashboard ejecutivo</Text>
         <ExecutiveKpiGrid />
         <DashboardSections />
 
-        {links.map((item) => (
-          <TouchableOpacity
-            key={item.route}
-            style={styles.menuItem}
-            onPress={() => router.push(item.route as never)}
-          >
-            <Ionicons name={item.icon} size={22} color={colors.text} />
-            <Text style={styles.menuText}>{item.title}</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        ))}
+        {showLegacyMenu
+          ? links.map((item) => (
+              <TouchableOpacity
+                key={item.route}
+                style={styles.menuItem}
+                onPress={() => router.push(item.route as never)}
+              >
+                <Ionicons name={item.icon as never} size={22} color={colors.text} />
+                <Text style={styles.menuText}>{item.title}</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            ))
+          : null}
       </ScrollView>
     </SafeAreaView>
   );

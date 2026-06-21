@@ -70,7 +70,7 @@ export default function AuthLoginScreen() {
           label="Teléfono"
           value={phone}
           onChangeText={handlePhoneChange}
-          placeholder="2144698637 o 70801111"
+          placeholder="2144698637"
           keyboardType="phone-pad"
           hint={FIELD_HINTS.phone}
         />

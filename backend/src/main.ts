@@ -47,6 +47,7 @@ async function bootstrap() {
   console.log(`WebSocket: ${wsBase}/ws`);
   console.log(`Database: ${env.databaseProvider}`);
   console.log(`Storage: ${getResolvedStorageMode()}`);
+  console.log(`OTP MODE = ${getResolvedOtpMode() === 'twilio' ? 'REAL' : 'DEMO'}`);
   console.log(`OTP: ${getResolvedOtpMode()}`);
   console.log(`Push: ${getResolvedPushMode()}`);
 }

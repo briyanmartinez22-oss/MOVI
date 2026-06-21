@@ -1,4 +1,4 @@
-import { env, getResolvedOtpMode, isTwilioConfigured, isTwilioVerifyConfigured } from '../config/env';
+import { env, getResolvedOtpMode, isDemoOtpAllowed, isTwilioConfigured, isTwilioVerifyConfigured } from '../config/env';
 
 export type OtpSendResult = {
   ok: boolean;
@@ -29,8 +29,8 @@ function createDemoProvider(): OtpProvider {
       return { ok: true, demo: true, provider: 'demo' };
     },
     async verifyOtp(_phone, code) {
-      if (env.nodeEnv === 'production') {
-        return { ok: false, error: 'OTP demo no permitido en producción.' };
+      if (env.nodeEnv === 'production' || !isDemoOtpAllowed()) {
+        return { ok: false, error: 'OTP demo no permitido.' };
       }
       if (code === env.demoOtpCode) return { ok: true };
       return { ok: false, error: 'Código OTP inválido.' };
@@ -126,7 +126,7 @@ export async function getOtpProvider(): Promise<OtpProvider> {
 
 export function generateOtpCode(): string {
   const mode = getResolvedOtpMode();
-  if (mode === 'demo') return env.demoOtpCode;
+  if (mode === 'demo' && isDemoOtpAllowed()) return env.demoOtpCode;
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 

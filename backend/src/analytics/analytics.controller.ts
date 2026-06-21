@@ -1,7 +1,10 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import { AdminStaffRoles } from '../common/decorators/admin-staff.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { AdminStaffGuard } from '../common/guards/admin-staff.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { OPS_ROLES } from '../services/admin-staff.service';
 import {
   getMetricsProviders,
   getMetricsRatings,
@@ -13,8 +16,9 @@ import {
 import { getAdminKpis, listPendingVerifications } from '../services/analytics.service';
 
 @Controller('admin')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, AdminStaffGuard)
 @Roles('admin')
+@AdminStaffRoles(...OPS_ROLES)
 export class AnalyticsController {
   @Get('kpis')
   async kpis() {

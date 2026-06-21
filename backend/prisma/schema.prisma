@@ -42,10 +42,16 @@ enum DriverVerificationStatus {
   suspended
 }
 
+enum AccountStatus {
+  active
+  suspended
+}
+
 enum BusinessStatus {
   pending
   approved
   rejected
+  suspended
 }
 
 enum SubscriptionStatus {
@@ -202,15 +208,16 @@ enum AuditAction {
 }
 
 model User {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   fullName      String
-  phoneNumber   String   @unique
+  phoneNumber   String        @unique
   duiNumber     String?
   role          UserRole
-  phoneVerified Boolean  @default(false)
+  accountStatus AccountStatus @default(active)
+  phoneVerified Boolean       @default(false)
   profilePhoto  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   owner              Owner?
   driver             Driver?
