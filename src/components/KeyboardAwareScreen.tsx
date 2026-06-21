@@ -49,15 +49,26 @@ export function KeyboardAwareScreen({
     children
   );
 
+  // TouchableWithoutFeedback around ScrollView blocks TextInput focus on web.
+  const content = (
+    <View style={styles.flex} pointerEvents="box-none">
+      {inner}
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
       style={[styles.flex, style]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={keyboardVerticalOffset}
     >
-      <TouchableWithoutFeedback onPress={dismiss} accessible={false}>
-        <View style={styles.flex}>{inner}</View>
-      </TouchableWithoutFeedback>
+      {scroll || Platform.OS === 'web' ? (
+        content
+      ) : (
+        <TouchableWithoutFeedback onPress={dismiss} accessible={false}>
+          {content}
+        </TouchableWithoutFeedback>
+      )}
     </KeyboardAvoidingView>
   );
 }

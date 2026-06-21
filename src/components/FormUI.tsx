@@ -69,6 +69,9 @@ export function FormInput({
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         keyboardType={keyboardType}
+        inputMode={keyboardType === 'phone-pad' ? 'tel' : keyboardType === 'numeric' ? 'numeric' : 'text'}
+        autoComplete={keyboardType === 'phone-pad' ? 'tel' : 'off'}
+        editable
         multiline={multiline}
         onBlur={onBlur}
       />

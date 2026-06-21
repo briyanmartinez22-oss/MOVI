@@ -4,6 +4,7 @@ import { signOtpVerificationToken, verifyOtpVerificationToken } from '../lib/jwt
 import { isValidMoviPhone, normalizePhone } from '../utils/phone';
 import { checkRateLimit } from './rateLimit.service';
 import { generateOtpCode, getOtpProvider } from './otpProvider';
+import { findUserByPhone } from './ensure-super-admin.service';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_RATE_MAX = 5;
@@ -129,7 +130,7 @@ export async function verifyOtp(phone: string, code: string) {
     });
   }
 
-  const existing = await prisma.user.findUnique({ where: { phoneNumber } });
+  const existing = await findUserByPhone(phone);
   return {
     ok: true as const,
     verified: true,

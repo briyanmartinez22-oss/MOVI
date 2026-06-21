@@ -11,9 +11,14 @@ import { LoadingTimeoutBanner } from '../../src/components/LoadingTimeoutBanner'
 import { ScreenHeader } from '../../src/components/FormUI';
 import { useAuth } from '../../src/context/AuthContext';
 import { useAsyncAction } from '../../src/utils/asyncAction';
-import { isValidMoviPhone, phoneRegion } from '../../src/utils/platform';
+import { isValidMoviPhone, normalizePhone } from '../../src/utils/platform';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { colors, typography, spacing } from '../../src/theme';
+
+/** Permite dígitos, +, espacios y guiones mientras se escribe — sin normalizar. */
+function sanitizePhoneInput(text: string): string {
+  return text.replace(/[^\d+\s()-]/g, '');
+}
 
 /** Login unificado — solo teléfono; OTP y DUI en pasos siguientes. */
 export default function AuthLoginScreen() {
@@ -23,16 +28,24 @@ export default function AuthLoginScreen() {
   const [error, setError] = useState('');
   const { loading, timedOut, run, retry } = useAsyncAction(15000);
 
+  const phoneValid = isValidMoviPhone(phone);
+
+  const handlePhoneChange = (text: string) => {
+    setError('');
+    setPhone(sanitizePhoneInput(text));
+  };
+
   const handleContinue = async () => {
-    if (!isValidMoviPhone(phone)) {
+    if (!phoneValid) {
       setError('Ingresa un teléfono válido: El Salvador (8 dígitos) o EE.UU. (10 dígitos)');
       return;
     }
+    const normalized = normalizePhone(phone);
     setError('');
     await run(async () => {
-      const res = await requestOtp(phone);
+      const res = await requestOtp(normalized);
       if (res.ok) {
-        router.push({ pathname: '/auth/otp', params: { phone, flow: 'login' } });
+        router.push({ pathname: '/auth/otp', params: { phone: normalized, flow: 'login' } });
       } else {
         setError(res.error ?? 'Error al enviar OTP');
       }
@@ -56,13 +69,18 @@ export default function AuthLoginScreen() {
         <FormInput
           label="Teléfono"
           value={phone}
-          onChangeText={setPhone}
-          placeholder={phoneRegion(phone) === 'US' ? '214 469 8637' : '7777 7777'}
+          onChangeText={handlePhoneChange}
+          placeholder="2144698637 o 70801111"
           keyboardType="phone-pad"
           hint={FIELD_HINTS.phone}
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <PrimaryButton title="Continuar" onPress={handleContinue} loading={loading} />
+        <PrimaryButton
+          title="Continuar"
+          onPress={handleContinue}
+          loading={loading}
+          disabled={!phoneValid}
+        />
       </KeyboardAwareScreen>
     </SafeAreaView>
   );

@@ -15,6 +15,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-super-admin": "tsx scripts/seed-super-admin.ts",
+    "db:verify-super-admin": "tsx scripts/verify-super-admin.ts",
     "prisma:validate": "prisma validate",
     "prisma:migrate:status": "prisma migrate status",
     "qa": "tsx scripts/qa-e2e.ts",

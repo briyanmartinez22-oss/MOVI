@@ -7,9 +7,15 @@ import path from 'node:path';
 import { AppModule } from './app.module';
 import { assertEnv, env, getResolvedOtpMode, getResolvedPushMode, getResolvedStorageMode } from './config/env';
 import { TripHubService } from './realtime/trip-hub.service';
+import { ensureSuperAdmin, SUPER_ADMIN_PHONE } from './services/ensure-super-admin.service';
 
 async function bootstrap() {
   assertEnv();
+
+  const superAdmin = await ensureSuperAdmin();
+  console.log(
+    `SuperAdmin sync: ${SUPER_ADMIN_PHONE} (${superAdmin.created ? 'created' : 'updated'}) staff=${superAdmin.staffRole}`
+  );
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: true,

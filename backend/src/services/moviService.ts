@@ -18,6 +18,7 @@ import { assertOtpValidForLogin, assertPhoneVerifiedForRegistration, consumeVeri
 import { canDriverOperate } from './subscription.service';
 import { recordDriverLocation } from './providerEligibility.service';
 import { assignUserRole } from './users.service';
+import { findUserByPhone } from './ensure-super-admin.service';
 
 async function issueAuthBundle(userId: string, role: string) {
   const authToken = signAuthToken({ userId, role });
@@ -45,7 +46,7 @@ export async function loginWithOtp(phone: string, dui: string | undefined, code:
   if (!verify.ok) return verify;
 
   const phoneNumber = normalizePhone(phone);
-  const user = await prisma.user.findUnique({ where: { phoneNumber } });
+  const user = await findUserByPhone(phone);
 
   if (!user) {
     return { ok: false as const, error: 'Usuario no registrado. Completa el registro.' };
