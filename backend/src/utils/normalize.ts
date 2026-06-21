@@ -52,7 +52,7 @@ export function toAuthUser(user: {
   id: string;
   fullName: string;
   phoneNumber: string;
-  duiNumber: string;
+  duiNumber: string | null;
   role: string;
   phoneVerified: boolean;
   profilePhoto: string | null;
@@ -63,7 +63,7 @@ export function toAuthUser(user: {
     userId: user.id,
     fullName: user.fullName,
     phoneNumber: user.phoneNumber,
-    duiNumber: user.duiNumber,
+    duiNumber: user.duiNumber ?? '',
     role: user.role,
     phoneVerified: user.phoneVerified,
     profilePhoto: user.profilePhoto ?? undefined,

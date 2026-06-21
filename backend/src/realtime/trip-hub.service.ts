@@ -10,6 +10,7 @@ import {
   serializeTrip,
   updateDriverLocation,
 } from '../services/tripService';
+import { updateDriverSessionLocation } from '../services/driver-location.service';
 
 type ClientState = {
   userId?: string;
@@ -22,12 +23,26 @@ type ClientState = {
 export class TripHubService {
   private readonly tripSubscribers = new Map<string, Set<WebSocket>>();
   private readonly onlineDriverSockets = new Map<string, Set<WebSocket>>();
+  private readonly adminOpsSubscribers = new Set<WebSocket>();
   private readonly clientState = new WeakMap<WebSocket, ClientState>();
 
   attach(server: HttpServer) {
     const wss = new WebSocketServer({ server, path: '/ws' });
 
     wss.on('connection', (ws, req) => {
+      const bootstrapToken = this.extractToken(req, {});
+      if (bootstrapToken) {
+        const payload = verifyAuthToken(bootstrapToken);
+        if (payload) {
+          const state = this.getClient(ws);
+          state.userId = payload.userId;
+          state.role = payload.role;
+          ws.send(
+            JSON.stringify({ type: 'auth_ok', userId: payload.userId, role: payload.role })
+          );
+        }
+      }
+
       ws.on('message', async (raw) => {
         try {
           const body = JSON.parse(String(raw)) as Record<string, unknown>;
@@ -91,6 +106,31 @@ export class TripHubService {
             return;
           }
 
+          if (type === 'subscribe_admin_ops') {
+            const state = this.getClient(ws);
+            const token = this.extractToken(req, body);
+            if (token && !state.userId) {
+              const payload = verifyAuthToken(token);
+              if (payload) {
+                state.userId = payload.userId;
+                state.role = payload.role;
+              }
+            }
+            if (!state.userId || state.role !== 'admin') {
+              ws.send(JSON.stringify({ type: 'error', error: 'Solo administradores' }));
+              return;
+            }
+            this.adminOpsSubscribers.add(ws);
+            ws.send(JSON.stringify({ type: 'admin_ops_subscribed' }));
+            return;
+          }
+
+          if (type === 'unsubscribe_admin_ops') {
+            this.adminOpsSubscribers.delete(ws);
+            ws.send(JSON.stringify({ type: 'admin_ops_unsubscribed' }));
+            return;
+          }
+
           if (type === 'subscribe_trip') {
             const tripId = String(body.tripId ?? '');
             if (!tripId) {
@@ -145,6 +185,47 @@ export class TripHubService {
             return;
           }
 
+          if (type === 'driver_location_update') {
+            const state = this.getClient(ws);
+            if (!state.userId || state.role !== 'driver') {
+              ws.send(JSON.stringify({ type: 'error', error: 'Solo conductores' }));
+              return;
+            }
+
+            const driverId = String(body.driverId ?? state.driverId ?? '');
+            const lat = Number(body.lat);
+            const lng = Number(body.lng);
+            if (!driverId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+              ws.send(
+                JSON.stringify({ type: 'error', error: 'driverId, lat y lng requeridos' })
+              );
+              return;
+            }
+
+            const speed = body.speed != null ? Number(body.speed) : undefined;
+            const heading = body.heading != null ? Number(body.heading) : undefined;
+            const tripId = body.tripId ? String(body.tripId) : undefined;
+
+            const result = await updateDriverSessionLocation(
+              state.userId,
+              driverId,
+              lat,
+              lng,
+              { speed, heading, tripId }
+            );
+            if (!result.ok) {
+              ws.send(JSON.stringify({ type: 'error', error: result.error }));
+              return;
+            }
+
+            state.driverId = driverId;
+            this.broadcastToAdminOps('driver_location_update', result.payload);
+            ws.send(
+              JSON.stringify({ type: 'driver_location_update_ok', payload: result.payload })
+            );
+            return;
+          }
+
           if (type === 'driver_location') {
             const state = this.getClient(ws);
             if (!state.userId) {
@@ -167,6 +248,19 @@ export class TripHubService {
             }
 
             this.broadcastToTrip(tripId, 'driver_location', { tripId, ...result.location });
+
+            if (state.driverId) {
+              const sessionUpdate = await updateDriverSessionLocation(
+                state.userId,
+                state.driverId,
+                lat,
+                lng,
+                { tripId }
+              );
+              if (sessionUpdate.ok) {
+                this.broadcastToAdminOps('driver_location_update', sessionUpdate.payload);
+              }
+            }
             return;
           }
 
@@ -181,6 +275,7 @@ export class TripHubService {
         if (state?.userId) {
           this.unregisterOnlineDriver(state.userId, ws);
         }
+        this.adminOpsSubscribers.delete(ws);
         this.unsubscribeAll(ws);
       });
     });
@@ -209,6 +304,7 @@ export class TripHubService {
     for (const userId of eligibleUserIds) {
       this.sendToDriverUser(userId, 'request_new', trip);
     }
+    this.broadcastToAdminOps('ops_trip_new', trip);
   }
 
   sendToDriverUser(userId: string, event: string, payload: unknown) {
@@ -225,7 +321,23 @@ export class TripHubService {
 
   async emitTripUpdated(tripId: string) {
     const trip = await serializeTrip(tripId);
-    if (trip) this.broadcastToTrip(tripId, 'trip_updated', trip);
+    if (!trip) return;
+    this.broadcastToTrip(tripId, 'trip_updated', trip);
+    this.broadcastToAdminOps('ops_trip_updated', trip);
+  }
+
+  broadcastToAdminOps(event: string, payload: unknown) {
+    if (!this.adminOpsSubscribers.size) return;
+    const message = JSON.stringify({ type: event, payload });
+    for (const ws of this.adminOpsSubscribers) {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(message);
+      }
+    }
+  }
+
+  async broadcastAdminOpsRefresh() {
+    this.broadcastToAdminOps('ops_refresh', { at: Date.now() });
   }
 
   private registerOnlineDriver(userId: string, ws: WebSocket) {

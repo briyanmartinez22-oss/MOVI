@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PrimaryButton, LegalConsentCheckbox, DuiConsentCheckbox, MoviLogo } from '../../src/components';
+import { PrimaryButton, LegalConsentCheckbox, MoviLogo } from '../../src/components';
 import { FormInput, ScreenHeader } from '../../src/components/FormUI';
 import { validateRegistrationConsent } from '../../src/utils/registrationConsent';
 import { KeyboardAwareScreen } from '../../src/components/KeyboardAwareScreen';
@@ -13,13 +13,14 @@ import { showSuccess } from '../../src/utils/feedback';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { navigateToRegistrationPermissions } from '../../src/utils/registrationNavigation';
 import { hasPermissionsAccepted } from '../../src/services/permissionsFlowService';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
+import { isValidMoviPhone } from '../../src/utils/platform';
 import { colors, spacing, typography } from '../../src/theme';
 
 export default function RegisterPassengerScreen() {
   const router = useRouter();
   const {
     phone: phoneParam,
-    dui: duiParam,
     verified,
     action,
     firstName: firstNameParam,
@@ -27,7 +28,6 @@ export default function RegisterPassengerScreen() {
     consented,
   } = useLocalSearchParams<{
     phone: string;
-    dui: string;
     verified?: string;
     action?: string;
     firstName?: string;
@@ -38,17 +38,14 @@ export default function RegisterPassengerScreen() {
   const [firstName, setFirstName] = useState(firstNameParam ?? '');
   const [lastName, setLastName] = useState(lastNameParam ?? '');
   const [phone, setPhone] = useState(phoneParam ?? '');
-  const [dui, setDui] = useState(duiParam ?? '');
   const [termsAccepted, setTermsAccepted] = useState(consented === '1');
   const [privacyAccepted, setPrivacyAccepted] = useState(consented === '1');
-  const [duiAccepted, setDuiAccepted] = useState(consented === '1');
   const [error, setError] = useState('');
   const createStarted = useRef(false);
   const { loading, timedOut, run, retry } = useAsyncAction();
 
   const registrationParams = (): Record<string, string> => ({
     phone,
-    dui,
     firstName,
     lastName,
     flow: 'register',
@@ -69,18 +66,11 @@ export default function RegisterPassengerScreen() {
       setError('Ingresa nombre y apellido');
       return;
     }
-    if (phone.replace(/\D/g, '').length < 8) {
-      setError('Ingresa un teléfono válido');
+    if (!isValidMoviPhone(phone)) {
+      setError('Ingresa un teléfono válido (+503 o +1)');
       return;
     }
-    if (!dui.trim()) {
-      setError('Ingresa tu DUI');
-      return;
-    }
-    const consentError = validateRegistrationConsent(
-      { termsAccepted, privacyAccepted },
-      duiAccepted
-    );
+    const consentError = validateRegistrationConsent({ termsAccepted, privacyAccepted });
     if (consentError) {
       setError(consentError);
       return;
@@ -116,7 +106,7 @@ export default function RegisterPassengerScreen() {
     setError('');
     await run(async () => {
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
-      const res = await registerPassenger(phone, dui, fullName);
+      const res = await registerPassenger(phone, fullName);
       if (res.ok) {
         showSuccess('¡Bienvenido!', 'Tu cuenta de pasajero fue creada.');
         router.replace('/passenger');
@@ -131,7 +121,10 @@ export default function RegisterPassengerScreen() {
       <ScreenHeader title="Registro pasajero" onBack={() => router.replace('/auth/register-account')} />
       <KeyboardAwareScreen scroll contentContainerStyle={styles.content}>
         <MoviLogo size="md" style={styles.logo} />
-        <Text style={styles.intro}>Crear cuenta PASAJERO</Text>
+        <Text style={styles.intro}>Crear cuenta pasajero</Text>
+        <Text style={styles.hint}>
+          Solo necesitas nombre, apellido y teléfono verificado. No se requiere DUI.
+        </Text>
         <FormInput label="Nombre" value={firstName} onChangeText={setFirstName} placeholder="María" />
         <FormInput label="Apellido" value={lastName} onChangeText={setLastName} placeholder="García" />
         <FormInput
@@ -142,20 +135,12 @@ export default function RegisterPassengerScreen() {
           keyboardType="phone-pad"
           hint={FIELD_HINTS.phone}
         />
-        <FormInput
-          label="DUI"
-          value={dui}
-          onChangeText={setDui}
-          placeholder="01234567-8"
-          hint={FIELD_HINTS.dui}
-        />
         <LegalConsentCheckbox
           termsAccepted={termsAccepted}
           privacyAccepted={privacyAccepted}
           onTermsChange={setTermsAccepted}
           onPrivacyChange={setPrivacyAccepted}
         />
-        <DuiConsentCheckbox accepted={duiAccepted} onChange={setDuiAccepted} />
         <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
@@ -163,6 +148,7 @@ export default function RegisterPassengerScreen() {
           onPress={handleContinue}
           loading={loading}
         />
+        <ContextualHelpLink sectionId="registration-guide" />
       </KeyboardAwareScreen>
     </SafeAreaView>
   );
@@ -172,6 +158,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, alignItems: 'center' },
   logo: { marginBottom: spacing.md },
-  intro: { ...typography.subtitle, color: colors.text, marginBottom: spacing.md, alignSelf: 'stretch' },
+  intro: { ...typography.subtitle, color: colors.text, marginBottom: spacing.xs, alignSelf: 'stretch' },
+  hint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md, alignSelf: 'stretch', lineHeight: 20 },
   error: { color: colors.danger, marginBottom: spacing.md },
 });

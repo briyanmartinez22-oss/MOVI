@@ -4,6 +4,7 @@ import { AuthProvider } from '../src/context/AuthContext';
 import { TripProvider } from '../src/context/TripContext';
 import { AppShell } from '../src/components/AppShell';
 import { BrandedLoadingView } from '../src/components/BrandedLoadingView';
+import { PushNotificationManager } from '../src/components/PushNotificationManager';
 import { useBrandFonts } from '../src/hooks/useBrandFonts';
 
 function RootNavigator() {
@@ -24,6 +25,7 @@ function RootNavigator() {
         <Stack.Screen name="notifications" />
         <Stack.Screen name="activity" />
         <Stack.Screen name="chat" />
+        <Stack.Screen name="learn" />
         {__DEV__ ? (
           <>
             <Stack.Screen name="dev/learning" />
@@ -45,6 +47,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <TripProvider>
+        <PushNotificationManager />
         <RootNavigator />
       </TripProvider>
     </AuthProvider>

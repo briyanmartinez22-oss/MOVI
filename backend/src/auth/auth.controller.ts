@@ -47,7 +47,12 @@ export class AuthController {
     if (!result.ok) {
       throw new HttpException(result.error ?? 'OTP inválido', HttpStatus.BAD_REQUEST);
     }
-    return { verified: true, isNewUser: result.isNewUser };
+    return {
+      verified: true,
+      isNewUser: result.isNewUser,
+      verificationToken: result.verificationToken,
+      existingRole: result.existingRole ?? null,
+    };
   }
 
   @Post('login')
@@ -55,7 +60,7 @@ export class AuthController {
     const parsed = z
       .object({
         phone: phoneSchema,
-        dui: z.string().min(5),
+        dui: z.string().min(5).optional(),
         code: z.string().min(4),
       })
       .safeParse(body);

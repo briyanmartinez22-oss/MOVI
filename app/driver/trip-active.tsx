@@ -9,6 +9,7 @@ import {
   PrimaryButton,
   DriverAvatar,
   VehicleBadge,
+  CancelTripButton,
 } from '../../src/components';
 import { HelpButton } from '../../src/components/HelpButton';
 import { useSafeBack } from '../../src/hooks/useSafeBack';
@@ -294,6 +295,7 @@ export default function DriverTripActiveScreen() {
           )}
 
           {renderActions()}
+          <CancelTripButton by="driver" style={styles.cancelBtn} />
         </BottomCard>
       </View>
     </View>
@@ -423,6 +425,7 @@ const styles = StyleSheet.create({
   unitText: { ...typography.caption, color: colors.textSecondary },
   primaryAction: { marginTop: spacing.sm },
   secondaryAction: { marginTop: spacing.md },
+  cancelBtn: { marginTop: spacing.md },
   meetingBox: {
     backgroundColor: colors.borderLight,
     borderRadius: radius.md,

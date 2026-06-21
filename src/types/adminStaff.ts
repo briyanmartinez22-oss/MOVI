@@ -1,0 +1,14 @@
+export type AdminStaffRole =
+  | 'SUPER_ADMIN'
+  | 'OPS_ADMIN'
+  | 'SUPPORT_ADMIN'
+  | 'FINANCE_ADMIN'
+  | 'COMPLIANCE_ADMIN';
+
+export const ADMIN_STAFF_ROLE_LABELS: Record<AdminStaffRole, string> = {
+  SUPER_ADMIN: 'SUPER ADMIN',
+  OPS_ADMIN: 'OPS ADMIN',
+  SUPPORT_ADMIN: 'SOPORTE',
+  FINANCE_ADMIN: 'FINANZAS',
+  COMPLIANCE_ADMIN: 'COMPLIANCE',
+};

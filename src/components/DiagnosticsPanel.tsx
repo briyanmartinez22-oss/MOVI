@@ -15,6 +15,7 @@ import {
   subscribeDiagnostics,
   type DiagnosticEntry,
 } from '../services/diagnosticsService';
+import { isDevDiagnosticsEnabled } from '../utils/devMode';
 import { colors, typography, spacing, radius } from '../theme';
 
 export function DiagnosticsPanel() {
@@ -22,12 +23,12 @@ export function DiagnosticsPanel() {
   const [entries, setEntries] = useState<DiagnosticEntry[]>([]);
 
   useEffect(() => {
-    if (!__DEV__) return;
+    if (!isDevDiagnosticsEnabled()) return;
     void loadDiagnostics();
     return subscribeDiagnostics(() => setEntries(getDiagnostics()));
   }, []);
 
-  if (!__DEV__) return null;
+  if (!isDevDiagnosticsEnabled()) return null;
 
   return (
     <>

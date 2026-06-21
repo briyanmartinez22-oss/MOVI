@@ -5,9 +5,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { HelpVisibilityProvider, useHelpVisibility } from '../context/HelpVisibilityContext';
 import { logDiagnostic } from '../services/diagnosticsService';
+import { isDevDiagnosticsEnabled } from '../utils/devMode';
 import { useKeyboardDismissOnNavigate } from '../hooks/useKeyboardDismiss';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
-import { HelpButton } from './HelpButton';
+import { MoviHelpBubble } from './help/MoviHelpBubble';
 import { colors, typography } from '../theme';
 
 type Props = { children: ReactNode };
@@ -27,6 +28,7 @@ class DiagnosticsErrorBoundary extends Component<Props, BoundaryState> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    if (!isDevDiagnosticsEnabled()) return;
     const wrapped = new Error(error.message);
     wrapped.stack = info.componentStack ?? error.stack;
     logDiagnostic({ error: wrapped, route: 'error-boundary' });
@@ -52,21 +54,9 @@ function DiagnosticRouteLogger({ children }: Props) {
   return <>{children}</>;
 }
 
-/** Botón flotante global de ayuda (esquina inferior derecha). */
-function FloatingHelpButton() {
-  const insets = useSafeAreaInsets();
-  const { visible } = useHelpVisibility();
-
-  if (!visible) return null;
-
-  return (
-    <View
-      style={[styles.floatingHelpWrap, { bottom: insets.bottom + 16, right: insets.right + 16 }]}
-      pointerEvents="box-none"
-    >
-      <HelpButton />
-    </View>
-  );
+/** Burbuja flotante movible Aprende MOVI */
+function FloatingHelpBubble() {
+  return <MoviHelpBubble />;
 }
 
 /** Botón flotante para volver a mostrar la ayuda cuando está oculta. */
@@ -95,10 +85,10 @@ function AppShellInner({ children }: Props) {
         <DiagnosticRouteLogger>
           <View style={styles.root}>
             {children}
-            <FloatingHelpButton />
+            <FloatingHelpBubble />
             <FloatingHelpRestore />
           </View>
-          <DiagnosticsPanel />
+          {isDevDiagnosticsEnabled() ? <DiagnosticsPanel /> : null}
         </DiagnosticRouteLogger>
       </NavigationKeyboardGuard>
     </DiagnosticsErrorBoundary>

@@ -26,12 +26,12 @@ interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   requestOtp: (phone: string) => Promise<{ ok: boolean; error?: string }>;
-  verifyOtp: (phone: string, code: string) => Promise<{ ok: boolean; isNewUser?: boolean; error?: string }>;
-  login: (phone: string, dui: string, code: string) => Promise<{ ok: boolean; error?: string }>;
+  verifyOtp: (phone: string, code: string) => Promise<{ ok: boolean; isNewUser?: boolean; existingRole?: string | null; error?: string }>;
+  login: (phone: string, dui: string | undefined, code: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => void;
   bootstrap: () => Promise<void>;
-  registerPassenger: (phone: string, dui: string, fullName: string) => Promise<{ ok: boolean; error?: string }>;
+  registerPassenger: (phone: string, fullName: string) => Promise<{ ok: boolean; error?: string }>;
   registerOwner: (phone: string, fullName: string, dui: string) => Promise<{ ok: boolean; error?: string }>;
   registerDriverWithCode: (
     phone: string,
@@ -76,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setUser(session.user);
           await refreshProfilesFromApi();
+          void import('../services/pushNotificationService').then((m) => m.syncPushTokenAfterAuth());
         }
       } else {
         refresh();
@@ -104,11 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyOtp = useCallback(async (phone: string, code: string) => {
     const res = await api.verifyOtp(phone, code);
     return res.ok
-      ? { ok: true, isNewUser: res.data?.isNewUser }
+      ? { ok: true, isNewUser: res.data?.isNewUser, existingRole: res.data?.existingRole ?? null }
       : { ok: false, error: res.error };
   }, []);
 
-  const login = useCallback(async (phone: string, dui: string, code: string) => {
+  const login = useCallback(async (phone: string, dui: string | undefined, code: string) => {
     const res = await api.loginWithOtp(phone, dui, code);
     if (res.ok && res.data) {
       setUser(res.data);
@@ -123,8 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const registerPassenger = useCallback(async (phone: string, dui: string, fullName: string) => {
-    const res = await api.registerPassenger(phone, dui, fullName);
+  const registerPassenger = useCallback(async (phone: string, fullName: string) => {
+    const res = await api.registerPassenger(phone, fullName);
     if (res.ok && res.data) {
       setUser(res.data);
       return { ok: true };

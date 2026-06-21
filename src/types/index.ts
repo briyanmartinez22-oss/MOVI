@@ -101,6 +101,8 @@ export interface TripRequest {
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
+  cancelledAt?: number;
+  cancelledBy?: 'passenger' | 'driver';
 }
 
 export interface DriverConnectionState {

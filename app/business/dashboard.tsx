@@ -15,6 +15,7 @@ import {
   getDeliveryHistory,
 } from '../../src/services/profileData';
 import { computeKmSaved } from '../../src/services/analyticsService';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function BusinessDashboard() {
@@ -92,6 +93,7 @@ export default function BusinessDashboard() {
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
         ))}
+        <ContextualHelpLink sectionId="business-guide" />
       </ScrollView>
     </SafeAreaView>
   );

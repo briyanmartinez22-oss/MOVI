@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, ScreenHeader } from '../src/components/FormUI';
+import { TripHistoryCard } from '../src/components';
 import { useAuth } from '../src/context/AuthContext';
 import { useTrip } from '../src/context/TripContext';
 import { fetchTripHistoryForRole } from '../src/services/mockApi';
 import { getNotifications } from '../src/services/notificationService';
 import {
   getDriverByUserId,
-  formatDate,
   formatTime,
 } from '../src/services/profileData';
 import type { TripHistoryRecord } from '../src/types/models';
@@ -60,14 +60,7 @@ export default function ActivityCenterScreen() {
         {tripHistory.length === 0 ? (
           <Text style={styles.meta}>Sin viajes registrados</Text>
         ) : (
-          tripHistory.slice(0, 8).map((trip) => (
-            <Card key={trip.id} style={styles.block}>
-              <Text style={styles.title}>{trip.originName} → {trip.destinationName}</Text>
-              <Text style={styles.meta}>
-                {formatDate(trip.completedAt)} · ${trip.price.toFixed(2)} · {trip.distanceKm.toFixed(1)} km
-              </Text>
-            </Card>
-          ))
+          tripHistory.slice(0, 8).map((trip) => <TripHistoryCard key={trip.id} trip={trip} />)
         )}
 
         {driver && sessions.length > 0 && (

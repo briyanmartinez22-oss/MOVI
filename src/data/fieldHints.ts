@@ -1,6 +1,6 @@
 /** Descripciones contextuales bajo campos importantes. */
 export const FIELD_HINTS = {
-  phone: 'Usaremos este número para verificar tu identidad.',
+  phone: 'El Salvador (+503, 8 dígitos) o EE.UU. (+1, 10 dígitos). Usado para verificar tu identidad.',
   dui: 'Ingresa tu DUI correctamente.',
   otp: 'Código de un solo uso enviado a tu teléfono.',
   fullName: 'Debe coincidir con tu documento de identidad.',

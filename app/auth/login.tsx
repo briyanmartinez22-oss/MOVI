@@ -11,7 +11,7 @@ import { LoadingTimeoutBanner } from '../../src/components/LoadingTimeoutBanner'
 import { ScreenHeader } from '../../src/components/FormUI';
 import { useAuth } from '../../src/context/AuthContext';
 import { useAsyncAction } from '../../src/utils/asyncAction';
-import { isValidSalvadorPhone } from '../../src/utils/platform';
+import { isValidMoviPhone, phoneRegion } from '../../src/utils/platform';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { colors, typography, spacing } from '../../src/theme';
 
@@ -24,8 +24,8 @@ export default function AuthLoginScreen() {
   const { loading, timedOut, run, retry } = useAsyncAction(15000);
 
   const handleContinue = async () => {
-    if (!isValidSalvadorPhone(phone)) {
-      setError('Ingresa un número de teléfono válido de El Salvador (8 dígitos)');
+    if (!isValidMoviPhone(phone)) {
+      setError('Ingresa un teléfono válido: El Salvador (8 dígitos) o EE.UU. (10 dígitos)');
       return;
     }
     setError('');
@@ -51,13 +51,13 @@ export default function AuthLoginScreen() {
           }}
         />
         <BrandTagline variant="secondary" />
-        <Text style={styles.subtitle}>Ingresa tu número de teléfono</Text>
+        <Text style={styles.subtitle}>Ingresa tu número de teléfono (+503 o +1)</Text>
         <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
         <FormInput
           label="Teléfono"
           value={phone}
           onChangeText={setPhone}
-          placeholder="7777 7777"
+          placeholder={phoneRegion(phone) === 'US' ? '214 469 8637' : '7777 7777'}
           keyboardType="phone-pad"
           hint={FIELD_HINTS.phone}
         />

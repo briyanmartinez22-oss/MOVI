@@ -234,7 +234,7 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
       const verify = await mockApi.verifyOtp(phone, DEMO_OTP_CODE);
       assert(verify.ok && verify.data?.isNewUser === true, 'OTP debe marcar usuario nuevo');
 
-      const reg = await mockApi.registerPassenger(phone, dui, 'QA Nav Pasajero');
+      const reg = await mockApi.registerPassenger(phone, 'QA Nav Pasajero');
       assert(reg.ok && reg.data?.role === 'passenger', 'Registro tras OTP falló');
 
       const again = await hasPermissionsAccepted('passenger_register');
@@ -321,7 +321,7 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
     await track('register-passenger', 'Registro pasajero nuevo', async () => {
       const phone = qaPhone('01');
       const dui = qaDui('1');
-      const res = await mockApi.registerPassenger(phone, dui, 'QA Pasajero');
+      const res = await mockApi.registerPassenger(phone, 'QA Pasajero');
       assert(res.ok, res.error ?? 'Registro pasajero falló');
       return res.data!.fullName;
     });

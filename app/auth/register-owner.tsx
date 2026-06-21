@@ -13,6 +13,7 @@ import { showSuccess } from '../../src/utils/feedback';
 import { useAuth } from '../../src/context/AuthContext';
 import * as mockApi from '../../src/services/mockApi';
 import { getOwnerByUserId } from '../../src/services/profileData';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { SpecialCaseType } from '../../src/types/models';
 import { colors, typography, spacing } from '../../src/theme';
 
@@ -161,6 +162,7 @@ export default function RegisterOwnerScreen() {
             <PrimaryButton title="Ir al dashboard" onPress={() => router.replace('/owner/dashboard')} style={{ marginTop: spacing.lg }} />
           </Card>
         )}
+        <ContextualHelpLink sectionId="driver-guide" />
       </KeyboardAwareScreen>
     </SafeAreaView>
   );

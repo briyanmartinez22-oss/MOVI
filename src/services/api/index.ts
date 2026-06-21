@@ -19,11 +19,21 @@ import {
 } from '../../types/models';
 import { ApiResponse } from '../../types/models';
 import { Offer, TripRequest } from '../../types';
+import type {
+  AuditLogRecord,
+  DispatchCandidate,
+  FinanceSummary,
+  OperationalAlertRecord,
+  SecuritySummary,
+  SupportTicketRecord,
+  Trip360Data,
+} from '../../types/adminCenter';
+import type { AdminStaffRole } from '../../types/adminStaff';
 import { persistSession, logout as clearAuthSession } from '../authService';
 import * as mock from '../mockApi/mockImpl';
 import * as mockStore from '../mockStore';
 import { useMockApi } from './config';
-import { apiFetch, apiGet, apiPost } from './client';
+import { apiFetch, apiGet, apiPost, apiPatch } from './client';
 import {
   getInvitePreviewFromCache,
   resolveCurrentProfiles as resolveCachedProfiles,
@@ -59,19 +69,19 @@ export async function requestOtp(phone: string): Promise<ApiResponse<{ sent: boo
 export async function verifyOtp(
   phone: string,
   code: string
-): Promise<ApiResponse<{ verified: boolean; isNewUser: boolean }>> {
+): Promise<ApiResponse<{ verified: boolean; isNewUser: boolean; existingRole?: string | null }>> {
   if (useMockApi()) return mock.verifyOtp(phone, code);
-  const res = await apiPost<{ verified: boolean; isNewUser: boolean }>(
-    '/auth/verify-otp',
-    { phone, code },
-    { auth: false }
-  );
+  const res = await apiPost<{
+    verified: boolean;
+    isNewUser: boolean;
+    existingRole?: string | null;
+  }>('/auth/verify-otp', { phone, code }, { auth: false });
   return res.ok ? ok(res.data!) : fail(res.error ?? 'OTP inválido');
 }
 
 export async function loginWithOtp(
   phone: string,
-  dui: string,
+  dui: string | undefined,
   code: string
 ): Promise<ApiResponse<AuthUser>> {
   if (useMockApi()) return mock.loginWithOtp(phone, dui, code);
@@ -87,13 +97,12 @@ export async function loginWithOtp(
 
 export async function registerPassenger(
   phone: string,
-  dui: string,
   fullName: string
 ): Promise<ApiResponse<AuthUser>> {
-  if (useMockApi()) return mock.registerPassenger(phone, dui, fullName);
+  if (useMockApi()) return mock.registerPassenger(phone, fullName);
   const res = await apiPost<{ user: AuthUser; authToken: string }>(
     '/passengers/register',
-    { phone, dui, fullName },
+    { phone, fullName },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar');
@@ -276,6 +285,30 @@ export async function fetchAdminProviders() {
   return res.ok ? res.data?.providers ?? [] : [];
 }
 
+export async function fetchAdminDrivers() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ drivers: import('../../types/adminUsers').AdminDriverRecord[] }>(
+    '/admin/drivers'
+  );
+  return res.ok ? res.data?.drivers ?? [] : [];
+}
+
+export async function fetchAdminPassengers() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ passengers: import('../../types/adminUsers').AdminPassengerRecord[] }>(
+    '/admin/passengers'
+  );
+  return res.ok ? res.data?.passengers ?? [] : [];
+}
+
+export async function fetchAdminRatingsList(limit = 50) {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ ratings: import('../../types/adminUsers').AdminRatingRecord[] }>(
+    `/admin/ratings?limit=${limit}`
+  );
+  return res.ok ? res.data?.ratings ?? [] : [];
+}
+
 export async function fetchAdminTrips(status?: string) {
   if (useMockApi()) return [];
   const res = await apiGet<{ trips: TripRequest[] }>(`/admin/trips${status ? `?status=${status}` : ''}`);
@@ -286,6 +319,283 @@ export async function fetchAdminRequests() {
   if (useMockApi()) return [];
   const res = await apiGet<{ requests: TripRequest[] }>('/admin/requests');
   return res.ok ? res.data?.requests ?? [] : [];
+}
+
+export async function fetchOperationsLiveSnapshot() {
+  if (useMockApi()) {
+    const { getMockOperationsLiveBundle } = await import('../operationsLiveService');
+    return getMockOperationsLiveBundle().snapshot;
+  }
+  const res = await apiGet<import('../../types/operationsLive').OperationsLiveSnapshot>(
+    '/admin/operations-live/snapshot'
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchOperationsLiveDrivers() {
+  if (useMockApi()) {
+    const { getMockOperationsLiveBundle } = await import('../operationsLiveService');
+    return getMockOperationsLiveBundle().drivers;
+  }
+  const res = await apiGet<{ drivers: import('../../types/operationsLive').LiveDriver[] }>(
+    '/admin/operations-live/drivers'
+  );
+  return res.ok ? res.data?.drivers ?? [] : [];
+}
+
+export async function fetchOperationsLiveTrips() {
+  if (useMockApi()) {
+    const { getMockOperationsLiveBundle } = await import('../operationsLiveService');
+    return getMockOperationsLiveBundle().trips;
+  }
+  const res = await apiGet<{ trips: TripRequest[] }>('/admin/operations-live/trips');
+  return res.ok ? res.data?.trips ?? [] : [];
+}
+
+export async function fetchOperationsLiveAlerts() {
+  if (useMockApi()) {
+    const { getMockOperationsLiveBundle } = await import('../operationsLiveService');
+    return getMockOperationsLiveBundle().alerts;
+  }
+  const res = await apiGet<{ alerts: import('../../types/operationsLive').OperationsAlert[] }>(
+    '/admin/operations-live/alerts'
+  );
+  return res.ok ? res.data?.alerts ?? [] : [];
+}
+
+export async function fetchOperationsLiveTripDetail(tripId: string) {
+  if (useMockApi()) {
+    const { getMockOperationsLiveBundle } = await import('../operationsLiveService');
+    return getMockOperationsLiveBundle().trips.find((t) => t.id === tripId) ?? null;
+  }
+  const res = await apiGet<{ trip: TripRequest }>(`/admin/operations-live/trips/${tripId}`);
+  return res.ok ? res.data?.trip ?? null : null;
+}
+
+export async function fetchReassignDriverOptions(tripId: string) {
+  if (useMockApi()) {
+    const { getMockReassignDrivers } = await import('../operationsLiveService');
+    return getMockReassignDrivers(tripId);
+  }
+  const res = await apiGet<{ drivers: import('../../types/operationsLive').ReassignDriverOption[] }>(
+    `/admin/operations-live/trips/${tripId}/available-drivers`
+  );
+  return res.ok ? res.data?.drivers ?? [] : [];
+}
+
+export async function adminCancelTripApi(tripId: string) {
+  if (useMockApi()) {
+    return ok({ id: tripId, lifecycleStatus: 'cancelled' });
+  }
+  const res = await apiPost<{ trip: TripRequest }>(`/admin/operations-live/trips/${tripId}/cancel`);
+  return res.ok ? ok(res.data?.trip) : fail(res.error ?? 'Error al cancelar');
+}
+
+export async function adminReassignTripApi(tripId: string, driverId: string) {
+  if (useMockApi()) {
+    return ok({ id: tripId, driverId });
+  }
+  const res = await apiPost<{ trip: TripRequest }>(
+    `/admin/operations-live/trips/${tripId}/reassign`,
+    { driverId }
+  );
+  return res.ok ? ok(res.data?.trip) : fail(res.error ?? 'Error al reasignar');
+}
+
+export async function fetchOperationsLiveBundle(): Promise<
+  import('../../types/operationsLive').OperationsLiveBundle
+> {
+  if (useMockApi()) {
+    const { getMockOperationsLiveBundle } = await import('../operationsLiveService');
+    return getMockOperationsLiveBundle();
+  }
+  const [snapshot, drivers, trips, alerts] = await Promise.all([
+    fetchOperationsLiveSnapshot(),
+    fetchOperationsLiveDrivers(),
+    fetchOperationsLiveTrips(),
+    fetchOperationsLiveAlerts(),
+  ]);
+  return {
+    snapshot: snapshot ?? null,
+    drivers,
+    trips,
+    alerts,
+  };
+}
+
+export async function fetchDispatchCandidates(tripId: string) {
+  if (useMockApi()) {
+    const { getMockDispatchCandidates } = await import('../adminCenterMock');
+    return getMockDispatchCandidates(tripId);
+  }
+  const res = await apiGet<{ candidates: DispatchCandidate[] }>(
+    `/admin/operations-live/trips/${tripId}/dispatch-candidates`
+  );
+  return res.ok ? res.data?.candidates ?? [] : [];
+}
+
+export async function adminDispatchTripApi(tripId: string, driverId: string) {
+  if (useMockApi()) return ok({ id: tripId, driverId });
+  const res = await apiPost<{ trip: TripRequest }>(
+    `/admin/operations-live/trips/${tripId}/dispatch`,
+    { driverId }
+  );
+  return res.ok ? ok(res.data?.trip) : fail(res.error ?? 'Error al asignar');
+}
+
+export async function fetchAdminMe() {
+  if (useMockApi()) {
+    const session = await import('../authService').then((m) => m.loadSession());
+    const phone = session?.user?.phoneNumber ?? '';
+    const { resolveStaffRoleFromPhone } = await import('../../config/adminPermissions');
+    const role = resolveStaffRoleFromPhone(phone) ?? 'OPS_ADMIN';
+    return { staffRole: role as AdminStaffRole };
+  }
+  const res = await apiGet<{
+    staffRole: AdminStaffRole;
+    user: AuthUser;
+  }>('/admin/me');
+  return res.ok && res.data ? res.data : null;
+}
+
+export async function fetchAdminAlerts(status?: string) {
+  if (useMockApi()) {
+    const { getMockOperationalAlerts } = await import('../adminCenterMock');
+    return getMockOperationalAlerts();
+  }
+  const q = status ? `?status=${status}` : '';
+  const res = await apiGet<{ alerts: OperationalAlertRecord[] }>(
+    `/admin/alerts${q}`
+  );
+  return res.ok ? res.data?.alerts ?? [] : [];
+}
+
+export async function ackAdminAlertApi(alertId: string) {
+  if (useMockApi()) return ok({ id: alertId });
+  const res = await apiPost(`/admin/alerts/${alertId}/ack`);
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
+}
+
+export async function resolveAdminAlertApi(alertId: string) {
+  if (useMockApi()) return ok({ id: alertId });
+  const res = await apiPost(`/admin/alerts/${alertId}/resolve`);
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
+}
+
+export async function fetchTrip360(tripId: string) {
+  if (useMockApi()) {
+    const { getMockTrip360 } = await import('../adminCenterMock');
+    return getMockTrip360(tripId);
+  }
+  const res = await apiGet<Trip360Data>(
+    `/admin/trips/${tripId}/360`
+  );
+  return res.ok ? res.data : null;
+}
+
+export async function fetchSupportTickets(status?: string) {
+  if (useMockApi()) {
+    const { getMockSupportTickets } = await import('../adminCenterMock');
+    return getMockSupportTickets();
+  }
+  const q = status ? `?status=${status}` : '';
+  const res = await apiGet<{ tickets: SupportTicketRecord[] }>(
+    `/admin/support/tickets${q}`
+  );
+  return res.ok ? res.data?.tickets ?? [] : [];
+}
+
+export async function createSupportTicketApi(body: Record<string, string>) {
+  if (useMockApi()) return ok({ id: `ticket-${Date.now()}` });
+  const res = await apiPost('/admin/support/tickets', body);
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
+}
+
+export async function updateSupportTicketApi(ticketId: string, body: Record<string, string>) {
+  if (useMockApi()) return ok({ id: ticketId });
+  const res = await apiPatch(`/admin/support/tickets/${ticketId}`, body);
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
+}
+
+export async function fetchFinanceSummary() {
+  if (useMockApi()) {
+    const { getMockFinanceSummary } = await import('../adminCenterMock');
+    return getMockFinanceSummary();
+  }
+  const res = await apiGet<FinanceSummary>('/admin/finance/summary');
+  return res.ok ? res.data : null;
+}
+
+export async function fetchFinancePayments() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ payments: Record<string, unknown>[] }>('/admin/finance/payments');
+  return res.ok ? res.data?.payments ?? [] : [];
+}
+
+export async function fetchSecuritySummary() {
+  if (useMockApi()) {
+    const { getMockSecuritySummary } = await import('../adminCenterMock');
+    return getMockSecuritySummary();
+  }
+  const res = await apiGet<SecuritySummary>('/admin/security/summary');
+  return res.ok ? res.data : null;
+}
+
+export async function fetchAuditLogs(params?: Record<string, string>) {
+  if (useMockApi()) {
+    const { getMockAuditLogs } = await import('../adminCenterMock');
+    return getMockAuditLogs();
+  }
+  const qs = params
+    ? `?${Object.entries(params)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+        .join('&')}`
+    : '';
+  const res = await apiGet<{ logs: AuditLogRecord[] }>(
+    `/admin/audit${qs}`
+  );
+  return res.ok ? res.data?.logs ?? [] : [];
+}
+
+export async function fetchSecurityEvents(limit = 50) {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ events: Record<string, unknown>[] }>(
+    `/admin/security/events?limit=${limit}`
+  );
+  return res.ok ? res.data?.events ?? [] : [];
+}
+
+export async function suspendUserApi(userId: string) {
+  if (useMockApi()) return ok({ id: userId });
+  const res = await apiPost(`/admin/security/users/${userId}/suspend`);
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
+}
+
+export async function unsuspendUserApi(userId: string) {
+  if (useMockApi()) return ok({ id: userId });
+  const res = await apiPost(`/admin/security/users/${userId}/unsuspend`);
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
+}
+
+export async function postSupportTicketMessageApi(ticketId: string, body: string) {
+  if (useMockApi()) return ok({ id: ticketId });
+  const res = await apiPost(`/admin/support/tickets/${ticketId}/messages`, { body });
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
+}
+
+export async function fetchFinanceSubscriptions() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ subscriptions: Record<string, unknown>[] }>(
+    '/admin/finance/subscriptions'
+  );
+  return res.ok ? res.data?.subscriptions ?? [] : [];
+}
+
+export async function postFinanceRefundApi(body: { paymentId: string; reason?: string }) {
+  if (useMockApi()) return ok({ placeholder: true });
+  const res = await apiPost('/admin/finance/refunds', body);
+  return res.ok ? ok(res.data) : fail(res.error ?? 'Error');
 }
 
 export async function submitTripRatingApi(
@@ -403,10 +713,16 @@ export async function fetchTripHistoryAsync(): Promise<TripHistoryRecord[]> {
     originName: t.origin.name,
     destinationName: t.destination.name,
     distanceKm: t.distanceKm,
-    price: t.acceptedOffer?.price ?? 0,
+    price: t.acceptedOffer?.price ?? t.passengerOfferPrice ?? 0,
     durationMinutes: 15,
     status: t.lifecycleStatus ?? 'trip_completed',
-    completedAt: new Date(t.completedAt ?? Date.now()).toISOString(),
+    completedAt: new Date(
+      t.lifecycleStatus === 'cancelled'
+        ? (t.cancelledAt ?? t.createdAt)
+        : (t.completedAt ?? t.createdAt)
+    ).toISOString(),
+    cancelledAt: t.cancelledAt ? new Date(t.cancelledAt).toISOString() : undefined,
+    cancelledBy: t.cancelledBy,
   }));
   setProfileCache({ tripHistory: mapped });
   return mapped;

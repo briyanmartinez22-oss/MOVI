@@ -14,6 +14,7 @@ import {
   hasPermissionsAccepted,
   type PendingRegistrationFlow,
 } from '../../src/services/permissionsFlowService';
+import { isValidMoviPhone } from '../../src/utils/platform';
 import { colors, spacing, typography } from '../../src/theme';
 
 function isPendingFlow(value: string | undefined): value is PendingRegistrationFlow {
@@ -39,8 +40,8 @@ export default function RegisterIdentityScreen() {
   const pendingFlow = isPendingFlow(pendingFlowParam) ? pendingFlowParam : undefined;
 
   const handleContinue = async () => {
-    if (phone.replace(/\D/g, '').length < 8) {
-      setError('Ingresa un teléfono válido');
+    if (!isValidMoviPhone(phone)) {
+      setError('Ingresa un teléfono válido (+503 o +1)');
       return;
     }
     if (!dui.trim()) {

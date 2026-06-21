@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'rea
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { MapScreen, BottomCard, PrimaryButton } from '../../src/components';
+import { MapScreen, BottomCard, PrimaryButton, CancelTripButton } from '../../src/components';
 import { HelpButton } from '../../src/components/HelpButton';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { useSafeBack } from '../../src/hooks/useSafeBack';
 import { SafeBackFallback } from '../../src/components/SafeBackFallback';
 import { useTrip } from '../../src/context/TripContext';
@@ -116,6 +117,8 @@ export default function MatchingScreen() {
               />
             ) : null}
           </View>
+          <CancelTripButton by="passenger" style={styles.cancelBtn} />
+          <ContextualHelpLink sectionId="trips-guide" />
         </BottomCard>
       </View>
     </View>
@@ -185,4 +188,5 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
+  cancelBtn: { marginTop: spacing.md },
 });

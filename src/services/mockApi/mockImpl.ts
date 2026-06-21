@@ -69,37 +69,40 @@ export async function requestOtp(phone: string): Promise<ApiResponse<{ sent: boo
 export async function verifyOtp(
   phone: string,
   code: string
-): Promise<ApiResponse<{ verified: boolean; isNewUser: boolean }>> {
+): Promise<ApiResponse<{ verified: boolean; isNewUser: boolean; existingRole?: string | null }>> {
   await ensureStoreReady();
   const res = await otpService.verifyOtp(phone, code, findUserByPhone);
   if (!res.ok) return fail(res.error ?? 'OTP inválido');
-  return ok({ verified: true, isNewUser: res.isNewUser ?? false });
+  const existing = findUserByPhone(phone);
+  return ok({ verified: true, isNewUser: res.isNewUser ?? false, existingRole: existing?.role ?? null });
 }
 
 export async function loginWithOtp(
   phone: string,
-  dui: string,
+  dui: string | undefined,
   code: string
 ): Promise<ApiResponse<AuthUser>> {
   await ensureStoreReady();
   const verify = await verifyOtp(phone, code);
   if (!verify.ok) return fail(verify.error!);
 
-  const existing = findUserByPhoneAndDui(phone, dui);
-  if (!existing) {
-    const byPhone = findUserByPhone(phone);
-    if (byPhone) return fail('El DUI no coincide con el registrado.');
-    return fail('Usuario no registrado. Completa el registro.');
+  const byPhone = findUserByPhone(phone);
+  if (!byPhone) return fail('Usuario no registrado. Completa el registro.');
+
+  if (byPhone.role !== 'passenger') {
+    if (!dui?.trim()) return fail('El DUI es requerido para este tipo de cuenta.');
+    const existing = findUserByPhoneAndDui(phone, dui);
+    if (!existing) return fail('El DUI no coincide con el registrado.');
   }
 
   updateStore((s) => ({
     ...s,
     users: s.users.map((u) =>
-      u.userId === existing.userId
+      u.userId === byPhone.userId
         ? { ...u, phoneVerified: true, updatedAt: new Date().toISOString() }
         : u
     ),
-    currentUserId: existing.userId,
+    currentUserId: byPhone.userId,
   }));
 
   const user = getCurrentUser()!;
@@ -109,11 +112,10 @@ export async function loginWithOtp(
 
 export async function registerPassenger(
   phone: string,
-  dui: string,
   fullName: string
 ): Promise<ApiResponse<AuthUser>> {
   if (findUserByPhone(phone)) return fail('Este teléfono ya está registrado.');
-  const user = createUser(phone, fullName, normalizeDui(dui), 'passenger');
+  const user = createUser(phone, fullName, '', 'passenger');
   updateStore((s) => ({ ...s, users: [...s.users, user], currentUserId: user.userId }));
   await persistSession(user);
   return ok(user);

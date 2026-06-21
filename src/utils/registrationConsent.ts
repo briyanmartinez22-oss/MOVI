@@ -3,7 +3,7 @@ import { isLegalConsentComplete } from '../components/LegalConsentCheckbox';
 
 export function validateRegistrationConsent(
   legal: LegalConsentValue,
-  duiAccepted: boolean
+  duiAccepted = true
 ): string | null {
   if (!isLegalConsentComplete(legal)) {
     return 'Debes aceptar los Términos y Condiciones y la Política de Privacidad';

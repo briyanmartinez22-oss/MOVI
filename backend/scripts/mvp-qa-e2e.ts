@@ -55,7 +55,6 @@ async function run() {
   await req('/auth/verify-otp', { phone: newPassengerPhone, code: OTP });
   const regPass = await req('/passengers/register', {
     phone: newPassengerPhone,
-    dui: '11111111-1',
     fullName: 'QA Pasajero MVP',
   });
   record('1. Registro pasajero', regPass.json.ok === true, regPass.json.error);

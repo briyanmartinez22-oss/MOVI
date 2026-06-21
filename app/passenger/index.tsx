@@ -12,6 +12,7 @@ import { buildTripMarkers } from '../../src/utils/mapHelpers';
 import { salvadorPlaces } from '../../src/data/mock';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { Place } from '../../src/types';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const HOME_PLACE = salvadorPlaces.find((p) => p.id === 'metrocentro')!;
@@ -106,6 +107,7 @@ export default function PassengerHome() {
               <Text style={styles.quickLabel}>Recientes</Text>
             </TouchableOpacity>
           </View>
+          <ContextualHelpLink sectionId="trips-guide" />
         </BottomCard>
       </View>
     </View>

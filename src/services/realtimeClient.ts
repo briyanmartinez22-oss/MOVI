@@ -8,7 +8,11 @@ export type RealtimeEventType =
   | 'offer_accepted'
   | 'chat_message'
   | 'driver_location'
-  | 'request_new';
+  | 'request_new'
+  | 'ops_trip_updated'
+  | 'ops_trip_new'
+  | 'ops_refresh'
+  | 'driver_location_update';
 
 type RealtimeListener = (payload: unknown) => void;
 
@@ -20,6 +24,8 @@ interface OutboundMessage {
   lng?: number;
   token?: string;
   driverId?: string;
+  speed?: number;
+  heading?: number;
 }
 
 const RECONNECT_MS = 3000;
@@ -33,6 +39,9 @@ class RealtimeClient {
   private shouldReconnect = true;
   private authToken: string | null = null;
   private onlineDriverId: string | null = null;
+  private adminOpsSubscribed = false;
+  private wsAuthenticated = false;
+  private pendingAfterAuth: (() => void)[] = [];
 
   isEnabled(): boolean {
     return !useMockApi();
@@ -57,23 +66,24 @@ class RealtimeClient {
 
       socket.onopen = () => {
         this.connecting = false;
+        this.wsAuthenticated = false;
         if (this.authToken) {
           this.send({ type: 'auth', token: this.authToken });
-        }
-        if (this.onlineDriverId) {
-          this.send({ type: 'driver_online', driverId: this.onlineDriverId });
-        }
-        for (const tripId of this.subscribedTrips) {
-          this.send({ type: 'subscribe_trip', tripId });
+        } else {
+          this.flushAfterAuth();
         }
       };
 
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(String(event.data)) as {
-            type?: RealtimeEventType | 'subscribed' | 'auth_ok' | 'error';
+            type?: RealtimeEventType | 'subscribed' | 'auth_ok' | 'admin_ops_subscribed' | 'error';
             payload?: unknown;
           };
+          if (data.type === 'auth_ok') {
+            this.wsAuthenticated = true;
+            this.flushAfterAuth();
+          }
           if (data.type && this.listeners.has(data.type as RealtimeEventType)) {
             this.listeners
               .get(data.type as RealtimeEventType)
@@ -114,6 +124,9 @@ class RealtimeClient {
     this.ws?.close();
     this.ws = null;
     this.subscribedTrips.clear();
+    this.adminOpsSubscribed = false;
+    this.wsAuthenticated = false;
+    this.pendingAfterAuth = [];
   }
 
   setDriverOnline(driverId: string): void {
@@ -139,12 +152,42 @@ class RealtimeClient {
     this.subscribedTrips.delete(tripId);
   }
 
+  subscribeAdminOps(): void {
+    this.adminOpsSubscribed = true;
+    void this.connect();
+    this.runAfterAuth(() => this.send({ type: 'subscribe_admin_ops' }));
+  }
+
+  unsubscribeAdminOps(): void {
+    this.adminOpsSubscribed = false;
+    this.send({ type: 'unsubscribe_admin_ops' });
+  }
+
   sendChat(tripId: string, text: string): void {
     this.send({ type: 'send_chat', tripId, text });
   }
 
   sendDriverLocation(tripId: string, lat: number, lng: number): void {
     this.send({ type: 'driver_location', tripId, lat, lng });
+  }
+
+  sendDriverLocationUpdate(params: {
+    driverId: string;
+    lat: number;
+    lng: number;
+    speed?: number;
+    heading?: number;
+    tripId?: string;
+  }): void {
+    this.send({
+      type: 'driver_location_update',
+      driverId: params.driverId,
+      lat: params.lat,
+      lng: params.lng,
+      speed: params.speed,
+      heading: params.heading,
+      tripId: params.tripId,
+    });
   }
 
   on(event: RealtimeEventType, listener: RealtimeListener): () => void {
@@ -173,6 +216,30 @@ class RealtimeClient {
       this.reconnectTimer = null;
       void this.connect();
     }, RECONNECT_MS);
+  }
+
+  private flushAfterAuth(): void {
+    if (this.onlineDriverId) {
+      this.send({ type: 'driver_online', driverId: this.onlineDriverId });
+    }
+    for (const tripId of this.subscribedTrips) {
+      this.send({ type: 'subscribe_trip', tripId });
+    }
+    if (this.adminOpsSubscribed) {
+      this.send({ type: 'subscribe_admin_ops' });
+    }
+    for (const fn of this.pendingAfterAuth) {
+      fn();
+    }
+    this.pendingAfterAuth = [];
+  }
+
+  private runAfterAuth(fn: () => void): void {
+    if (this.wsAuthenticated || !this.authToken) {
+      fn();
+      return;
+    }
+    this.pendingAfterAuth.push(fn);
   }
 }
 

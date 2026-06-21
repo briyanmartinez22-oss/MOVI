@@ -98,3 +98,11 @@ export function apiPost<T>(
 ) {
   return apiFetch<T>(path, { ...options, method: 'POST', body });
 }
+
+export function apiPatch<T>(
+  path: string,
+  body?: unknown,
+  options?: Omit<ApiRequestOptions, 'method' | 'body'>
+) {
+  return apiFetch<T>(path, { ...options, method: 'PATCH', body });
+}

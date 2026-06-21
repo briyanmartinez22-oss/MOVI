@@ -14,7 +14,7 @@ import {
   stringifyJsonField,
   toAuthUser,
 } from '../utils/normalize';
-import { assertOtpValidForLogin } from './otpService';
+import { assertOtpValidForLogin, assertPhoneVerifiedForRegistration, consumeVerifiedOtp } from './otpService';
 import { canDriverOperate } from './subscription.service';
 import { recordDriverLocation } from './providerEligibility.service';
 import { assignUserRole } from './users.service';
@@ -40,7 +40,7 @@ async function createDriverSubscription(driverId: string, registeredAt = new Dat
   });
 }
 
-export async function loginWithOtp(phone: string, dui: string, code: string) {
+export async function loginWithOtp(phone: string, dui: string | undefined, code: string) {
   const verify = await assertOtpValidForLogin(phone, code);
   if (!verify.ok) return verify;
 
@@ -51,13 +51,14 @@ export async function loginWithOtp(phone: string, dui: string, code: string) {
     return { ok: false as const, error: 'Usuario no registrado. Completa el registro.' };
   }
 
-  if (!duiMatches(user.duiNumber, dui)) {
-    const other = await prisma.user.findFirst({
-      where: { phoneNumber, NOT: { id: user.id } },
-    });
-    if (other) {
+  if (user.role !== 'passenger') {
+    if (!dui?.trim()) {
+      return { ok: false as const, error: 'El DUI es requerido para este tipo de cuenta.' };
+    }
+    if (!user.duiNumber || !duiMatches(user.duiNumber, dui)) {
       return { ok: false as const, error: 'El DUI no coincide con el registrado.' };
     }
+  } else if (dui?.trim() && user.duiNumber && !duiMatches(user.duiNumber, dui)) {
     return { ok: false as const, error: 'El DUI no coincide con el registrado.' };
   }
 
@@ -67,11 +68,20 @@ export async function loginWithOtp(phone: string, dui: string, code: string) {
   });
 
   const authUser = toAuthUser(updated);
+  if (updated.role === 'admin') {
+    const { getAdminStaffRole } = await import('./admin-staff.service');
+    const enriched = { ...authUser, staffRole: await getAdminStaffRole(updated.id) };
+    const tokens = await issueAuthBundle(updated.id, updated.role);
+    return { ok: true as const, user: enriched, ...tokens };
+  }
   const tokens = await issueAuthBundle(updated.id, updated.role);
   return { ok: true as const, user: authUser, ...tokens };
 }
 
-export async function registerPassenger(phone: string, dui: string, fullName: string) {
+export async function registerPassenger(phone: string, fullName: string) {
+  const otpCheck = await assertPhoneVerifiedForRegistration(phone);
+  if (!otpCheck.ok) return otpCheck;
+
   const phoneNumber = normalizePhone(phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
   if (existing) return { ok: false as const, error: 'Este teléfono ya está registrado.' };
@@ -80,11 +90,13 @@ export async function registerPassenger(phone: string, dui: string, fullName: st
     data: {
       fullName,
       phoneNumber,
-      duiNumber: normalizeDui(dui),
+      duiNumber: null,
       role: 'passenger',
       phoneVerified: true,
     },
   });
+
+  await consumeVerifiedOtp(phone);
 
   const authUser = toAuthUser(user);
   await assignUserRole(user.id, 'passenger');
@@ -93,6 +105,9 @@ export async function registerPassenger(phone: string, dui: string, fullName: st
 }
 
 export async function registerOwner(phone: string, fullName: string, dui: string) {
+  const otpCheck = await assertPhoneVerifiedForRegistration(phone);
+  if (!otpCheck.ok) return otpCheck;
+
   const phoneNumber = normalizePhone(phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
   if (existing) return { ok: false as const, error: 'Este teléfono ya está registrado.' };
@@ -114,6 +129,8 @@ export async function registerOwner(phone: string, fullName: string, dui: string
     },
     include: { owner: true },
   });
+
+  await consumeVerifiedOtp(phone);
 
   const authUser = toAuthUser(user);
   await assignUserRole(user.id, 'owner');
@@ -144,6 +161,9 @@ export async function registerBusiness(
     addressLabel: string;
   }
 ) {
+  const otpCheck = await assertPhoneVerifiedForRegistration(phone);
+  if (!otpCheck.ok) return otpCheck;
+
   const phoneNumber = normalizePhone(phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
   if (existing) return { ok: false as const, error: 'Este teléfono ya está registrado.' };
@@ -171,6 +191,8 @@ export async function registerBusiness(
     },
     include: { business: true },
   });
+
+  await consumeVerifiedOtp(phone);
 
   const authUser = toAuthUser(user);
   await assignUserRole(user.id, 'business');
@@ -303,6 +325,9 @@ export async function registerDriverWithInvite(
   fullName: string,
   code: string
 ) {
+  const otpCheck = await assertPhoneVerifiedForRegistration(phone);
+  if (!otpCheck.ok) return otpCheck;
+
   const phoneNumber = normalizePhone(phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
   if (existing) return { ok: false as const, error: 'Este teléfono ya está registrado.' };
@@ -362,6 +387,8 @@ export async function registerDriverWithInvite(
   await assignUserRole(user.id, 'driver');
   const tokens = await issueAuthBundle(user.id, user.role);
   const driver = user.driver!;
+
+  await consumeVerifiedOtp(phone);
 
   return {
     ok: true as const,
@@ -750,7 +777,12 @@ export async function getMe(userId: string) {
     include: { owner: true, driver: true, business: true },
   });
   if (!user) return null;
-  return toAuthUser(user);
+  const base = toAuthUser(user);
+  if (user.role === 'admin') {
+    const { getAdminStaffRole } = await import('./admin-staff.service');
+    return { ...base, staffRole: await getAdminStaffRole(userId) };
+  }
+  return base;
 }
 
 export async function updateUserProfilePhoto(userId: string, profilePhoto: string) {

@@ -19,7 +19,13 @@ export {
   isLegalConsentComplete,
   type LegalConsentValue,
 } from './LegalConsentCheckbox';
+export { CancelTripButton } from './CancelTripButton';
+export { TripHistoryCard } from './TripHistoryCard';
 export { HelpButton } from './HelpButton';
+export { ContextualHelpLink } from './help/ContextualHelpLink';
+export { HelpSearchBar } from './help/HelpSearchBar';
+export { HelpStepGuide } from './help/HelpStepGuide';
+export { HelpSupportPanel } from './help/HelpSupportPanel';
 export { KeyboardAwareScreen } from './KeyboardAwareScreen';
 export { LoadingTimeoutBanner } from './LoadingTimeoutBanner';
 export { SafeBackFallback } from './SafeBackFallback';
@@ -34,4 +40,12 @@ export { ExecutiveKpiGrid } from './admin/ExecutiveKpiGrid';
 export { DashboardSections } from './admin/DashboardSections';
 export { OperationsSnapshot } from './admin/OperationsSnapshot';
 export { ExportActions } from './admin/ExportActions';
+export {
+  OperationsLiveKpiBar,
+  LiveMap,
+  LiveTripsTable,
+  AlertCenter,
+  TripDetailModal,
+  ReassignDriverModal,
+} from './admin/operations-live';
 export { AppShell } from './AppShell';

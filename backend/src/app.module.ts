@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AdminModule } from './admin/admin.module';
+import { AdminCenterModule } from './admin/admin-center.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AuthModule } from './auth/auth.module';
 import { BusinessesModule } from './businesses/businesses.module';
@@ -9,6 +10,7 @@ import { AppConfigModule } from './config/config.module';
 import { DeliveriesModule } from './deliveries/deliveries.module';
 import { DriversModule } from './drivers/drivers.module';
 import { HealthModule } from './health/health.module';
+import { HelpModule } from './help/help.module';
 import { LocationsModule } from './locations/locations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OffersModule } from './offers/offers.module';
@@ -32,6 +34,7 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     PrismaModule,
     RealtimeModule,
     HealthModule,
+    HelpModule,
     AuthModule,
     UsersModule,
     PassengersModule,
@@ -48,6 +51,7 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     ChatModule,
     LocationsModule,
     AdminModule,
+    AdminCenterModule,
     AnalyticsModule,
     RatingsModule,
     UploadsModule,

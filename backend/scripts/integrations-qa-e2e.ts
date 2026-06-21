@@ -106,6 +106,7 @@ function checkProviderModulesExist(): boolean {
     'backend/src/services/mapsProvider.ts',
     'backend/src/services/otpProvider.ts',
     'backend/src/services/notificationProvider.ts',
+    'backend/src/services/expoPush.service.ts',
   ];
   const missing = required.filter((rel) => {
     try {
@@ -260,6 +261,17 @@ async function run() {
   await req('/auth/request-otp', { phone: '78214898' });
   const verify = await req('/auth/verify-otp', { phone: '78214898', code: OTP });
   record('OTP demo funciona sin Twilio', verify.json.ok === true || verify.json.data?.verified === true);
+
+  const unverifiedPhone = `73${String(Date.now()).slice(-6)}`;
+  const blockedRegister = await req('/passengers/register', {
+    phone: unverifiedPhone,
+    fullName: 'QA Blocked Passenger',
+  });
+  record(
+    'Registro bloqueado sin OTP verificado',
+    blockedRegister.status === 400 || blockedRegister.json.ok === false,
+    blockedRegister.json.error ?? blockedRegister.json.data?.error
+  );
 
   checkProviderModulesExist();
   checkNoHardcodedSecrets();

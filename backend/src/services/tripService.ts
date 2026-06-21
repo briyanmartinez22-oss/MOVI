@@ -184,6 +184,8 @@ export async function serializeTrip(tripId: string) {
     createdAt: trip.createdAt.getTime(),
     startedAt: trip.startedAt?.getTime(),
     completedAt: trip.completedAt?.getTime(),
+    cancelledAt: trip.cancelledAt?.getTime(),
+    cancelledBy: trip.cancelledBy ?? undefined,
   };
 }
 
@@ -298,7 +300,7 @@ async function notifyEligibleDriversNewRequest(tripId: string, passengerName: st
         'trip_update',
         trip.requestMode === 'SCHEDULED' ? 'Nueva reserva programada' : 'Nueva solicitud',
         `${passengerName} solicita un servicio${trip.requestMode === 'SCHEDULED' ? ' programado' : ' cerca de ti'}.`,
-        TRIP_PUSH_EVENTS.newRequest,
+        TRIP_PUSH_EVENTS.tripRequest,
         { tripId }
       )
     )
@@ -398,7 +400,7 @@ export async function createTripOffer(
     'offer_received',
     'Nueva oferta',
     `${driver.name} envió una oferta de $${data.price.toFixed(2)}.`,
-    TRIP_PUSH_EVENTS.newOffer,
+    TRIP_PUSH_EVENTS.offerCreated,
     { tripId, offerId: offer.id }
   ).catch(() => undefined);
   return { ok: true as const, offer, trip: serialized };
@@ -455,10 +457,18 @@ export async function acceptTripOffer(tripId: string, offerId: string, passenger
       'trip_update',
       'Oferta aceptada',
       'Tu oferta fue aceptada. Dirígete al punto de recogida.',
-      TRIP_PUSH_EVENTS.offerAccepted,
+      TRIP_PUSH_EVENTS.tripAccepted,
       { tripId, offerId }
     ).catch(() => undefined);
   }
+  void notifyUser(
+    trip.passengerId,
+    'trip_update',
+    'Conductor asignado',
+    `${driverUser?.name ?? 'Tu conductor'} va en camino hacia ti.`,
+    TRIP_PUSH_EVENTS.tripAccepted,
+    { tripId, offerId }
+  ).catch(() => undefined);
   return { ok: true as const, trip: serialized };
 }
 
@@ -518,6 +528,16 @@ async function dispatchLifecyclePush(
   lifecycleStatus: TripLifecycleStatus,
   driverUserId?: string
 ) {
+  if (lifecycleStatus === 'driver_arriving') {
+    await notifyUser(
+      trip.passengerId,
+      'trip_update',
+      'Conductor en camino',
+      'Tu conductor se dirige al punto de recogida.',
+      TRIP_PUSH_EVENTS.driverArriving,
+      { tripId: trip.id }
+    );
+  }
   if (lifecycleStatus === 'driver_arrived' && driverUserId) {
     await notifyUser(
       trip.passengerId,
@@ -575,13 +595,16 @@ export async function cancelTrip(
     ? await prisma.driver.findUnique({ where: { id: trip.driverId } })
     : null;
 
-  let cancelledBy = by;
-  if (!cancelledBy) {
-    if (trip.passengerId === userId) cancelledBy = 'passenger';
-    else if (driver?.userId === userId) cancelledBy = 'driver';
+  const isPassenger = trip.passengerId === userId;
+  const isDriver = driver?.userId === userId;
+  if (!isPassenger && !isDriver) {
+    return { ok: false as const, error: 'No autorizado.' };
   }
 
-  if (!cancelledBy) return { ok: false as const, error: 'No autorizado.' };
+  const cancelledBy: 'passenger' | 'driver' = isPassenger ? 'passenger' : 'driver';
+  if (by && by !== cancelledBy) {
+    return { ok: false as const, error: 'No autorizado para cancelar como este rol.' };
+  }
 
   await prisma.trip.update({
     where: { id: tripId },
@@ -593,7 +616,42 @@ export async function cancelTrip(
     },
   });
 
+  await prisma.tripOffer.updateMany({
+    where: { tripId, status: { in: ['pending', 'accepted'] } },
+    data: { status: 'expired' },
+  });
+
   const serialized = await serializeTrip(tripId);
+
+  const passengerMessage =
+    cancelledBy === 'passenger'
+      ? 'Cancelaste el viaje.'
+      : 'El conductor canceló el viaje.';
+  const driverMessage =
+    cancelledBy === 'driver'
+      ? 'Cancelaste el viaje.'
+      : 'El pasajero canceló el viaje.';
+
+  void notifyUser(
+    trip.passengerId,
+    'trip_update',
+    'Viaje cancelado',
+    passengerMessage,
+    TRIP_PUSH_EVENTS.tripCancelled,
+    { tripId, cancelledBy }
+  ).catch(() => undefined);
+
+  if (driver?.userId) {
+    void notifyUser(
+      driver.userId,
+      'trip_update',
+      'Viaje cancelado',
+      driverMessage,
+      TRIP_PUSH_EVENTS.tripCancelled,
+      { tripId, cancelledBy }
+    ).catch(() => undefined);
+  }
+
   return { ok: true as const, trip: serialized };
 }
 

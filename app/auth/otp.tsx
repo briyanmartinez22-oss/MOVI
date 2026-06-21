@@ -13,34 +13,52 @@ import { useAsyncAction } from '../../src/utils/asyncAction';
 import { showSuccess } from '../../src/utils/feedback';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { DEMO_OTP_CODE } from '../../src/services/otpService';
+import { isDevDiagnosticsEnabled } from '../../src/utils/devMode';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { colors, typography, spacing } from '../../src/theme';
 
 export default function OtpScreen() {
   const router = useRouter();
-  const { phone, flow, returnRoute, next, dui: duiParam, firstName, lastName, action, inviteCode, name, responsibleName, businessName, businessPhone, nit, businessType } =
-    useLocalSearchParams<{
-      phone: string;
-      flow?: string;
-      returnRoute?: string;
-      next?: string;
-      dui?: string;
-      firstName?: string;
-      lastName?: string;
-      action?: string;
-      inviteCode?: string;
-      name?: string;
-      responsibleName?: string;
-      businessName?: string;
-      businessPhone?: string;
-      nit?: string;
-      businessType?: string;
-    }>();
+  const {
+    phone,
+    flow,
+    returnRoute,
+    next,
+    dui: duiParam,
+    firstName,
+    lastName,
+    action,
+    inviteCode,
+    name,
+    responsibleName,
+    businessName,
+    businessPhone,
+    nit,
+    businessType,
+  } = useLocalSearchParams<{
+    phone: string;
+    flow?: string;
+    returnRoute?: string;
+    next?: string;
+    dui?: string;
+    firstName?: string;
+    lastName?: string;
+    action?: string;
+    inviteCode?: string;
+    name?: string;
+    responsibleName?: string;
+    businessName?: string;
+    businessPhone?: string;
+    nit?: string;
+    businessType?: string;
+  }>();
   const postOtpRoute = returnRoute ?? next;
   const { verifyOtp, login, refresh } = useAuth();
   const [otpCode, setOtpCode] = useState('');
   const [dui, setDui] = useState(duiParam ?? '');
   const [otpVerified, setOtpVerified] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [needsDuiLogin, setNeedsDuiLogin] = useState(false);
   const [error, setError] = useState('');
   const { loading, timedOut, run, retry } = useAsyncAction(15000);
 
@@ -49,9 +67,9 @@ export default function OtpScreen() {
   const forwardAfterOtp = (): Record<string, string> => {
     const params: Record<string, string> = {
       phone: phone ?? '',
-      dui: duiParam ?? dui,
       verified: '1',
     };
+    if (duiParam) params.dui = duiParam;
     if (firstName) params.firstName = firstName;
     if (lastName) params.lastName = lastName;
     if (action) params.action = action;
@@ -63,6 +81,18 @@ export default function OtpScreen() {
     if (nit) params.nit = nit;
     if (businessType) params.businessType = businessType;
     return params;
+  };
+
+  const completeLogin = async (duiValue?: string) => {
+    const res = await login(phone ?? '', duiValue, otpCode);
+    if (res.ok) {
+      refresh();
+      const { user } = resolveCurrentProfiles();
+      showSuccess('Sesión iniciada', `Bienvenido${user ? `, ${user.fullName}` : ''}.`);
+      router.replace(user ? (getRoleHomeRoute(user.role) as never) : '/welcome');
+    } else {
+      setError(res.error ?? 'Error al iniciar sesión');
+    }
   };
 
   const handleVerifyOtp = async () => {
@@ -97,10 +127,16 @@ export default function OtpScreen() {
         return;
       }
 
-      // Teléfono ya registrado durante flujo de registro → iniciar sesión
       if (!isLoginFlow) {
         return;
       }
+
+      if (verify.existingRole === 'passenger') {
+        await completeLogin();
+        return;
+      }
+
+      setNeedsDuiLogin(true);
     });
   };
 
@@ -111,19 +147,11 @@ export default function OtpScreen() {
     }
     setError('');
     await run(async () => {
-      const res = await login(phone ?? '', dui, otpCode);
-      if (res.ok) {
-        refresh();
-        const { user } = resolveCurrentProfiles();
-        showSuccess('Sesión iniciada', `Bienvenido${user ? `, ${user.fullName}` : ''}.`);
-        router.replace(user ? (getRoleHomeRoute(user.role) as never) : '/welcome');
-      } else {
-        setError(res.error ?? 'Error al iniciar sesión');
-      }
+      await completeLogin(dui);
     });
   };
 
-  const showDuiStep = otpVerified && !isNewUser;
+  const showDuiStep = otpVerified && !isNewUser && needsDuiLogin;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -132,9 +160,7 @@ export default function OtpScreen() {
         <MoviLogo size="md" style={styles.logo} />
         <Text style={styles.subtitle}>
           {showDuiStep
-            ? isLoginFlow
-              ? 'Confirma tu identidad con tu DUI'
-              : 'Este teléfono ya tiene cuenta. Confirma tu DUI para iniciar sesión.'
+            ? 'Confirma tu identidad con tu DUI'
             : `Código enviado a ${phone}`}
         </Text>
         <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
@@ -151,7 +177,9 @@ export default function OtpScreen() {
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <PrimaryButton title="Verificar" onPress={handleVerifyOtp} loading={loading} />
-            <Text style={styles.demo}>Demo OTP: {DEMO_OTP_CODE}</Text>
+            {isDevDiagnosticsEnabled() ? (
+              <Text style={styles.demo}>Demo OTP: {DEMO_OTP_CODE}</Text>
+            ) : null}
             {error.includes('Crea una cuenta') ? (
               <PrimaryButton
                 title="Crear cuenta"
@@ -160,6 +188,7 @@ export default function OtpScreen() {
                 style={styles.secondaryBtn}
               />
             ) : null}
+            <ContextualHelpLink sectionId="otp-guide" />
           </>
         ) : (
           <>

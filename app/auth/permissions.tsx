@@ -13,6 +13,7 @@ import {
   stripPermissionsNavParams,
   type PendingRegistrationFlow,
 } from '../../src/services/permissionsFlowService';
+import { requestPushPermissions } from '../../src/services/pushNotificationService';
 import { getRoleHomeRoute } from '../../src/utils/platform';
 import { resolveCurrentProfiles } from '../../src/services/mockApi';
 import { colors, typography, spacing, radius } from '../../src/theme';
@@ -110,6 +111,8 @@ export default function PermissionsScreen() {
       if (pendingFlow) {
         await markPermissionsAccepted(pendingFlow);
       }
+
+      await requestPushPermissions();
 
       if (nextRoute === '/auth/otp' && forwardParams.phone) {
         const otpRes = await requestOtp(forwardParams.phone);

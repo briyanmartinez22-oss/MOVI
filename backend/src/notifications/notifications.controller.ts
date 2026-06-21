@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
+import { z } from 'zod';
 import { AuthUser } from '../common/decorators/auth-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { AuthPayload } from '../common/guards/jwt-auth.guard';
@@ -9,12 +10,27 @@ import {
   registerPushToken,
 } from '../services/notification.service';
 
+const pushTokenSchema = z.object({
+  token: z.string().min(10),
+  platform: z.enum(['ios', 'android', 'web', 'unknown']),
+  deviceId: z.string().optional(),
+});
+
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
   @Post('push-token')
-  async pushToken(@AuthUser() auth: AuthPayload, @Body() body: { token: string; platform: string; deviceId?: string }) {
-    await registerPushToken(auth.userId, body.token, body.platform, body.deviceId);
+  async pushToken(@AuthUser() auth: AuthPayload, @Body() body: unknown) {
+    const parsed = pushTokenSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException('Token push inválido', HttpStatus.BAD_REQUEST);
+    }
+    await registerPushToken(
+      auth.userId,
+      parsed.data.token,
+      parsed.data.platform,
+      parsed.data.deviceId
+    );
     return { registered: true };
   }
 

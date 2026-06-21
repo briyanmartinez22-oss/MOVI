@@ -9,8 +9,10 @@ import {
   PrimaryButton,
   MeetingFacilitation,
   PriceStepper,
+  CancelTripButton,
 } from '../../src/components';
 import { HelpButton } from '../../src/components/HelpButton';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { useSafeBack } from '../../src/hooks/useSafeBack';
 import { SafeBackFallback } from '../../src/components/SafeBackFallback';
 import { showSuccess } from '../../src/utils/feedback';
@@ -142,6 +144,8 @@ export default function OffersScreen() {
               </ScrollView>
             </>
           )}
+          <CancelTripButton by="passenger" style={styles.cancelBtn} />
+          <ContextualHelpLink sectionId="trips-guide" />
         </View>
       </SafeAreaView>
     </View>
@@ -215,4 +219,5 @@ const styles = StyleSheet.create({
   listContent: { gap: spacing.md, paddingBottom: spacing.lg },
   empty: { ...typography.caption, color: colors.textMuted, textAlign: 'center', padding: spacing.lg },
   continueBtn: { marginTop: spacing.md },
+  cancelBtn: { marginTop: spacing.md },
 });

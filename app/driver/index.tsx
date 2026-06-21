@@ -20,6 +20,7 @@ import {
   VehicleBadge,
   DemandHeatmapLegend,
   MoviLogo,
+  CancelTripButton,
 } from '../../src/components';
 import { HotspotFilterBar } from '../../src/components/HotspotFilterBar';
 import { mockPassenger } from '../../src/data/mock';
@@ -54,6 +55,7 @@ import {
 } from '../../src/utils/hotspotFilters';
 import { useMockApi } from '../../src/services/api/config';
 import { fetchScheduledTrips, fetchDriverReservations } from '../../src/services/api';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const DRIVER_REQUEST_STATUS_LABELS: Record<string, string> = {
@@ -336,12 +338,16 @@ export default function DriverHome() {
           />
 
           {isAssignedToMe && isDriverTripActive(activeTrip?.lifecycleStatus, true) && (
-            <PrimaryButton
-              title="Ver viaje aceptado"
-              onPress={() => router.push('/driver/trip-active')}
-              style={styles.assignedBtn}
-            />
+            <>
+              <PrimaryButton
+                title="Ver viaje aceptado"
+                onPress={() => router.push('/driver/trip-active')}
+                style={styles.assignedBtn}
+              />
+              <CancelTripButton by="driver" style={styles.cancelBtn} />
+            </>
           )}
+          <ContextualHelpLink sectionId="driver-guide" />
         </BottomCard>
       </View>
 
@@ -482,6 +488,7 @@ const styles = StyleSheet.create({
   sessionInfo: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md },
   toggleBtn: { marginTop: spacing.sm },
   assignedBtn: { marginTop: spacing.md },
+  cancelBtn: { marginTop: spacing.sm },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay },
   requestCard: {
     backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,

@@ -29,6 +29,9 @@ function createDemoProvider(): OtpProvider {
       return { ok: true, demo: true, provider: 'demo' };
     },
     async verifyOtp(_phone, code) {
+      if (env.nodeEnv === 'production') {
+        return { ok: false, error: 'OTP demo no permitido en producción.' };
+      }
       if (code === env.demoOtpCode) return { ok: true };
       return { ok: false, error: 'Código OTP inválido.' };
     },

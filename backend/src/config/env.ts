@@ -106,6 +106,11 @@ export function assertEnv() {
     if (env.otpProvider === 'demo') {
       throw new Error('OTP_PROVIDER=demo is not allowed in production');
     }
+    if (!isTwilioVerifyConfigured()) {
+      throw new Error(
+        'Production requires Twilio Verify (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID)'
+      );
+    }
   }
 }
 

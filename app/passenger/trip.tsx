@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -7,8 +7,10 @@ import {
   BottomCard,
   DriverProfileCard,
   PrimaryButton,
+  CancelTripButton,
 } from '../../src/components';
 import { HelpButton } from '../../src/components/HelpButton';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { useSafeBack } from '../../src/hooks/useSafeBack';
 import { SafeBackFallback } from '../../src/components/SafeBackFallback';
 import { showSuccess } from '../../src/utils/feedback';
@@ -31,8 +33,7 @@ const STATUS_LABELS: Record<string, string> = {
 export default function TripInProgressScreen() {
   const router = useRouter();
   const { handleBack, showFallback, goHome } = useSafeBack();
-  const { activeTrip, origin, destination, cancelTrip, completeTrip, advanceTripLifecycle } =
-    useTrip();
+  const { activeTrip, origin, destination, completeTrip, advanceTripLifecycle } = useTrip();
 
   useEffect(() => {
     if (!activeTrip?.acceptedOffer || !destination) {
@@ -57,20 +58,6 @@ export default function TripInProgressScreen() {
   );
   const statusLabel =
     STATUS_LABELS[activeTrip.lifecycleStatus] ?? 'Viaje activo';
-
-  const handleCancel = () => {
-    Alert.alert('Cancelar viaje', '¿Deseas cancelar este viaje?', [
-      { text: 'No', style: 'cancel' },
-      {
-        text: 'Sí, cancelar',
-        style: 'destructive',
-        onPress: () => {
-          cancelTrip('passenger');
-          router.replace('/passenger');
-        },
-      },
-    ]);
-  };
 
   const handleAdvance = () => {
     const flow: Array<typeof activeTrip.lifecycleStatus> = [
@@ -158,11 +145,9 @@ export default function TripInProgressScreen() {
               <Ionicons name="chatbubble" size={22} color={colors.text} />
               <Text style={styles.actionLabel}>Chat</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} onPress={handleCancel}>
-              <Ionicons name="close-circle" size={22} color={colors.danger} />
-              <Text style={[styles.actionLabel, styles.cancelLabel]}>Cancelar viaje</Text>
-            </TouchableOpacity>
           </View>
+
+          <CancelTripButton by="passenger" variant="destructive-link" style={styles.cancelBtn} />
 
           <PrimaryButton
             title={
@@ -173,6 +158,7 @@ export default function TripInProgressScreen() {
             onPress={handleAdvance}
             variant="secondary"
           />
+          <ContextualHelpLink sectionId="trips-guide" />
         </BottomCard>
       </View>
     </View>
@@ -291,7 +277,5 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text,
   },
-  cancelLabel: {
-    color: colors.danger,
-  },
+  cancelBtn: { marginTop: spacing.sm },
 });

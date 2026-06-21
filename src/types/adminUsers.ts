@@ -1,0 +1,53 @@
+import type { AdminStaffRole } from '../types/adminStaff';
+
+export type AdminDriverRecord = {
+  id: string;
+  userId: string;
+  name: string;
+  phone: string;
+  status: string;
+  mvpStatus: string;
+  rating: number;
+  totalTrips: number;
+  online: boolean;
+  subscriptionStatus: string | null;
+  vehicle: {
+    unitNumber: string;
+    plateNumber: string;
+    vehicleType: string;
+  } | null;
+  ownerName: string;
+  phoneVerified: boolean;
+  createdAt: string;
+};
+
+export type AdminPassengerRecord = {
+  id: string;
+  fullName: string;
+  phoneNumber: string;
+  duiNumber: string | null;
+  phoneVerified: boolean;
+  totalTrips: number;
+  completedTrips: number;
+  createdAt: string;
+};
+
+export type AdminRatingRecord = {
+  id: string;
+  tripId: string;
+  raterId: string;
+  raterName: string;
+  raterRole: string;
+  rateeId: string;
+  rateeName: string;
+  rateeRole: string;
+  stars: number;
+  comment?: string;
+  createdAt: string;
+};
+
+export type AdminRatingsSummary = {
+  average: number;
+  count: number;
+  lowRatings: number;
+};

@@ -5,6 +5,7 @@ import { apiGet, apiPost } from './api/client';
 import { getCurrentUser, getStore, saveStore, setCurrentUser, updateStore } from './mockStore';
 import { clearProfileCache, setProfileCache } from './profileCache';
 import { realtimeClient } from './realtimeClient';
+import { syncPushTokenAfterAuth } from './pushNotificationService';
 
 export const SESSION_KEYS = {
   currentUser: 'movi_session_currentUser',
@@ -42,6 +43,7 @@ export async function persistSession(
   } else {
     void fetchAndCacheProfiles();
     void realtimeClient.connect();
+    void syncPushTokenAfterAuth();
   }
 }
 

@@ -8,6 +8,7 @@ import {
   PrimaryButton,
   DriverProfileCard,
   VehicleBadge,
+  CancelTripButton,
 } from '../../src/components';
 import { MeetingFacilitation } from '../../src/components/MeetingFacilitation';
 import { useTrip } from '../../src/context/TripContext';
@@ -90,6 +91,7 @@ export default function DriverAssignedScreen() {
             onPress={() => router.push('/passenger/trip')}
             style={styles.actionBtn}
           />
+          <CancelTripButton by="passenger" style={styles.cancelBtn} />
         </BottomCard>
       </View>
     </View>
@@ -146,4 +148,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.borderLight,
   },
   actionBtn: { marginTop: spacing.lg },
+  cancelBtn: { marginTop: spacing.md },
 });

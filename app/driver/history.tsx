@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandedLoadingView } from '../../src/components/BrandedLoadingView';
 import { Card, ScreenHeader } from '../../src/components/FormUI';
+import { TripHistoryCard } from '../../src/components';
 import { useAuth } from '../../src/context/AuthContext';
 import { useProfileBootstrap } from '../../src/hooks/useProfileBootstrap';
 import { fetchTripHistoryForRole } from '../../src/services/mockApi';
@@ -10,11 +11,9 @@ import {
   getDriverByUserId,
   getTripHistory,
   getAllSessionsByDriver,
-  formatDate,
   formatTime,
   formatDuration,
 } from '../../src/services/profileData';
-import { formatPrice } from '../../src/utils/pricing';
 import { colors, typography, spacing } from '../../src/theme';
 
 export default function DriverHistoryScreen() {
@@ -44,20 +43,11 @@ export default function DriverHistoryScreen() {
       <ScreenHeader title="Historial" />
       <ScrollView contentContainerStyle={styles.content}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Text style={styles.section}>Viajes completados ({trips.length})</Text>
+        <Text style={styles.section}>Historial de viajes ({trips.length})</Text>
         {trips.length === 0 ? (
           <Text style={styles.empty}>Aún no hay viajes en el historial</Text>
         ) : (
-          trips.map((trip) => (
-            <Card key={trip.id} style={styles.card}>
-              <Text style={styles.date}>{formatDate(trip.completedAt)} · {formatTime(trip.completedAt)}</Text>
-              <Text style={styles.route}>{trip.originName} → {trip.destinationName}</Text>
-              <Text style={styles.meta}>
-                {trip.passengerName} · {trip.distanceKm.toFixed(1)} km · {formatDuration(trip.durationMinutes)}
-              </Text>
-              <Text style={styles.price}>{formatPrice(trip.price)}</Text>
-            </Card>
-          ))
+          trips.map((trip) => <TripHistoryCard key={trip.id} trip={trip} />)
         )}
 
         <Text style={styles.section}>Todas las conexiones ({sessions.length})</Text>

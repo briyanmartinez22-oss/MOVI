@@ -43,6 +43,7 @@ import * as mockApi from '../services/mockApi';
 import { useMockApi } from '../services/api/config';
 import { requestTripOnBackend, cancelTripOnBackend, submitTripOffer, acceptTripOffer, advanceTripOnBackend, fetchAvailableTrips } from '../services/api';
 import { realtimeClient } from '../services/realtimeClient';
+import { useDriverGpsTracking } from '../hooks/useDriverGpsTracking';
 import {
   getActiveSession,
   getDriverById,
@@ -115,7 +116,7 @@ interface TripContextValue {
   updatePassengerOfferPrice: (price: number) => void;
   acceptOffer: (offerId: string) => void;
   advanceTripLifecycle: (status: TripLifecycleStatus) => void;
-  cancelTrip: (by?: 'passenger' | 'driver') => void;
+  cancelTrip: (by?: 'passenger' | 'driver') => Promise<{ ok: boolean; error?: string }>;
   completeTrip: () => void;
   connectDriver: (driverId: string, vehicleId: string) => Promise<{ ok: boolean; message?: string }>;
   disconnectDriver: (driverId: string) => Promise<{ ok: boolean; message?: string }>;
@@ -174,6 +175,54 @@ export function TripProvider({ children }: { children: ReactNode }) {
   const [driverTrackingCoords, setDriverTrackingCoords] = useState<Coordinates | null>(null);
   const [tripRoute, setTripRoute] = useState<TripRouteInfo | null>(null);
   const trackingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeTripRef = useRef<TripRequest | null>(null);
+
+  useEffect(() => {
+    activeTripRef.current = activeTrip;
+  }, [activeTrip]);
+
+  const clearActiveTripState = useCallback(() => {
+    if (trackingRef.current) clearInterval(trackingRef.current);
+    setDriverTrackingCoords(null);
+    setActiveTrip(null);
+    setDriverRequestExpired(false);
+  }, []);
+
+  const persistCancelledTripHistory = useCallback(
+    (trip: TripRequest, by: 'passenger' | 'driver') => {
+      const endedAt = new Date().toISOString();
+      mockApi.saveCompletedTrip({
+        tripId: trip.id,
+        passengerId: trip.passengerId ?? 'unknown',
+        passengerName: trip.passengerName,
+        driverId: trip.acceptedOffer?.driverId ?? '',
+        driverName: trip.acceptedOffer?.driver.name ?? '',
+        originName: trip.origin.name,
+        destinationName: trip.destination.name,
+        distanceKm: trip.distanceKm,
+        price: trip.acceptedOffer?.price ?? trip.passengerOfferPrice ?? 0,
+        durationMinutes: trip.startedAt
+          ? Math.max(1, Math.round((Date.now() - trip.startedAt) / 60000))
+          : 0,
+        status: 'cancelled',
+        completedAt: endedAt,
+        cancelledAt: endedAt,
+        cancelledBy: by,
+      });
+    },
+    []
+  );
+
+  const applyRemoteTripCancellation = useCallback(
+    (trip: TripRequest, notify = true) => {
+      if (trip.id) clearMeetingShare(trip.id);
+      if (notify) {
+        NotificationTemplates.tripCancelled(user?.userId);
+      }
+      clearActiveTripState();
+    },
+    [clearActiveTripState, user?.userId]
+  );
 
   const refreshDriverSession = useCallback((driverId: string) => {
     setActiveSession(getActiveSession(driverId) ?? null);
@@ -431,28 +480,35 @@ export function TripProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const cancelTrip = useCallback((by?: 'passenger' | 'driver') => {
-    setActiveTrip((current) => {
-      if (!current) return current;
-      if (current.id) {
-        clearMeetingShare(current.id);
-        if (!useMockApi()) {
-          void cancelTripOnBackend(current.id, by ?? 'passenger');
-        }
+  const cancelTrip = useCallback(
+    async (by: 'passenger' | 'driver' = 'passenger'): Promise<{ ok: boolean; error?: string }> => {
+      const current = activeTripRef.current;
+      if (!current?.id) {
+        return { ok: false, error: 'No hay un viaje activo para cancelar.' };
       }
+
+      const snapshot = current;
+      if (current.id) clearMeetingShare(current.id);
+
+      if (useMockApi()) {
+        persistCancelledTripHistory(snapshot, by);
+        NotificationTemplates.tripCancelled(user?.userId);
+        clearActiveTripState();
+        return { ok: true };
+      }
+
+      clearActiveTripState();
+      const res = await cancelTripOnBackend(snapshot.id, by);
+      if (!res.ok) {
+        setActiveTrip(snapshot);
+        return { ok: false, error: res.error ?? 'Error al cancelar el viaje.' };
+      }
+
       NotificationTemplates.tripCancelled(user?.userId);
-      return {
-        ...current,
-        status: 'cancelled',
-        lifecycleStatus: 'cancelled',
-        acceptedOffer: null,
-      };
-    });
-    if (trackingRef.current) clearInterval(trackingRef.current);
-    setDriverTrackingCoords(null);
-    setTimeout(() => setActiveTrip(null), 0);
-    void by;
-  }, [user]);
+      return { ok: true };
+    },
+    [clearActiveTripState, persistCancelledTripHistory, user?.userId]
+  );
 
   const completeTrip = useCallback(() => {
     setActiveTrip((current) => {
@@ -647,7 +703,7 @@ export function TripProvider({ children }: { children: ReactNode }) {
           return null;
         }
         if (updated.lifecycleStatus === 'cancelled') {
-          setDriverRequestExpired(true);
+          applyRemoteTripCancellation(updated);
           return null;
         }
         return updated;
@@ -673,7 +729,9 @@ export function TripProvider({ children }: { children: ReactNode }) {
       offTripUpdated();
       clearInterval(pollTimer);
     };
-  }, [user?.role, activeSession?.driverId, activeSession?.sessionId, applyIncomingTripRequest]);
+  }, [user?.role, activeSession?.driverId, activeSession?.sessionId, applyIncomingTripRequest, applyRemoteTripCancellation]);
+
+  useDriverGpsTracking(activeSession?.driverId ?? null, activeTrip?.id ?? null);
 
   const driverRequestStatus = useMemo((): TripContextValue['driverRequestStatus'] => {
     if (!activeSession) return 'offline';
@@ -692,6 +750,10 @@ export function TripProvider({ children }: { children: ReactNode }) {
     const offTripUpdated = realtimeClient.on('trip_updated', (payload) => {
       const updated = payload as TripRequest;
       if (updated?.id !== activeTrip.id) return;
+      if (updated.lifecycleStatus === 'cancelled') {
+        applyRemoteTripCancellation(updated);
+        return;
+      }
       setActiveTrip(updated);
     });
 
@@ -715,7 +777,7 @@ export function TripProvider({ children }: { children: ReactNode }) {
       offOfferAccepted();
       realtimeClient.unsubscribeTrip(activeTrip.id);
     };
-  }, [activeTrip?.id, user?.userId]);
+  }, [activeTrip?.id, user?.userId, applyRemoteTripCancellation]);
 
   // Driver location tracking (mock simulation or WS in real API mode)
   useEffect(() => {

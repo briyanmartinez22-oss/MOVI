@@ -69,6 +69,86 @@ export async function listAdminTrips(status?: string) {
   return Promise.all(trips.map((t) => serializeTrip(t.id)));
 }
 
+export async function listAdminDrivers() {
+  const drivers = await prisma.driver.findMany({
+    include: {
+      user: true,
+      vehicle: true,
+      owner: true,
+      sessions: { where: { disconnectedAt: null }, take: 1 },
+      subscription: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+
+  return drivers.map((d) => ({
+    id: d.id,
+    userId: d.userId,
+    name: d.name,
+    phone: d.phone,
+    status: d.status,
+    mvpStatus: mapDriverMvpStatus(d.status),
+    rating: d.rating,
+    totalTrips: d.totalTrips,
+    online: d.sessions.length > 0,
+    subscriptionStatus: d.subscription?.status ?? null,
+    vehicle: d.vehicle
+      ? {
+          unitNumber: d.vehicle.unitNumber,
+          plateNumber: d.vehicle.plateNumber,
+          vehicleType: d.vehicle.vehicleType,
+        }
+      : null,
+    ownerName: d.owner.name,
+    phoneVerified: d.user.phoneVerified,
+    createdAt: d.createdAt.toISOString(),
+  }));
+}
+
+export async function listAdminPassengers() {
+  const users = await prisma.user.findMany({
+    where: { role: 'passenger' },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+
+  const userIds = users.map((u) => u.id);
+  const tripStats =
+    userIds.length > 0
+      ? await prisma.trip.groupBy({
+          by: ['passengerId'],
+          where: { passengerId: { in: userIds } },
+          _count: { id: true },
+        })
+      : [];
+  const completedStats =
+    userIds.length > 0
+      ? await prisma.trip.groupBy({
+          by: ['passengerId'],
+          where: {
+            passengerId: { in: userIds },
+            lifecycleStatus: 'trip_completed',
+          },
+          _count: { id: true },
+        })
+      : [];
+
+  const tripCountMap = new Map(tripStats.map((s) => [s.passengerId, s._count.id]));
+  const completedMap = new Map(completedStats.map((s) => [s.passengerId, s._count.id]));
+
+  return users.map((u) => ({
+    id: u.id,
+    fullName: u.fullName,
+    phoneNumber: u.phoneNumber,
+    duiNumber: u.duiNumber,
+    phoneVerified: u.phoneVerified,
+    totalTrips: tripCountMap.get(u.id) ?? 0,
+    completedTrips: completedMap.get(u.id) ?? 0,
+    createdAt: u.createdAt.toISOString(),
+  }));
+}
+
 export async function listAdminRequests() {
   const trips = await prisma.trip.findMany({
     where: { lifecycleStatus: { in: ['requested', 'offered'] } },

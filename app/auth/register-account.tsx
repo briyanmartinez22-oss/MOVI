@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader } from '../../src/components/FormUI';
 import { MoviLogo } from '../../src/components/MoviLogo';
 import { BrandTagline } from '../../src/components/BrandTagline';
+import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const accountPaths = [
@@ -69,6 +70,7 @@ export default function RegisterAccountScreen() {
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
         ))}
+        <ContextualHelpLink sectionId="registration-guide" />
       </View>
     </SafeAreaView>
   );

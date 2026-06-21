@@ -1,4 +1,5 @@
 import { env, getResolvedPushMode, isFirebasePushConfigured } from '../config/env';
+import { sendExpoPushMessages } from './expoPush.service';
 
 export type PushSendResult = {
   sent: number;
@@ -27,36 +28,8 @@ function createExpoProvider(): NotificationProvider {
   return {
     mode: 'expo',
     async sendPush(tokens, title, body, data) {
-      let sent = 0;
-      let failed = 0;
-
-      for (const token of tokens) {
-        try {
-          const res = await fetch('https://exp.host/--/api/v2/push/send', {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-              ...(env.expoAccessToken
-                ? { Authorization: `Bearer ${env.expoAccessToken}` }
-                : {}),
-            },
-            body: JSON.stringify({
-              to: token,
-              title,
-              body,
-              data: data ?? {},
-              sound: 'default',
-            }),
-          });
-          if (res.ok) sent += 1;
-          else failed += 1;
-        } catch {
-          failed += 1;
-        }
-      }
-
-      return { sent, failed, mode: 'expo' };
+      if (!tokens.length) return { sent: 0, failed: 0, mode: 'expo' };
+      return sendExpoPushMessages(tokens, title, body, data);
     },
   };
 }
@@ -155,11 +128,19 @@ export async function getNotificationProvider(): Promise<NotificationProvider> {
 }
 
 export const TRIP_PUSH_EVENTS = {
-  newRequest: 'new_request',
-  newOffer: 'new_offer',
-  offerAccepted: 'offer_accepted',
+  tripRequest: 'trip_request',
+  offerCreated: 'offer_created',
+  tripAccepted: 'trip_accepted',
+  driverArriving: 'driver_arriving',
   driverArrived: 'driver_arrived',
   tripStarted: 'trip_started',
   tripCompleted: 'trip_completed',
+  tripCancelled: 'trip_cancelled',
   newMessage: 'new_message',
+  /** @deprecated use tripRequest */
+  newRequest: 'trip_request',
+  /** @deprecated use offerCreated */
+  newOffer: 'offer_created',
+  /** @deprecated use tripAccepted */
+  offerAccepted: 'trip_accepted',
 } as const;

@@ -98,3 +98,62 @@ export async function getTripRatings(tripId: string) {
     createdAt: r.createdAt.toISOString(),
   }));
 }
+
+export async function getUserRatings(userId: string) {
+  const ratings = await prisma.tripRating.findMany({
+    where: { rateeId: userId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  const count = ratings.length;
+  const average =
+    count > 0 ? Math.round((ratings.reduce((s, r) => s + r.stars, 0) / count) * 10) / 10 : 0;
+  return {
+    average,
+    count,
+    ratings: ratings.map((r) => ({
+      id: r.id,
+      tripId: r.tripId,
+      raterId: r.raterId,
+      raterRole: r.raterRole,
+      rateeId: r.rateeId,
+      rateeRole: r.rateeRole,
+      stars: r.stars,
+      comment: r.comment ?? undefined,
+      createdAt: r.createdAt.toISOString(),
+    })),
+  };
+}
+
+export async function listAdminRatings(limit = 50) {
+  const ratings = await prisma.tripRating.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
+
+  const userIds = [...new Set(ratings.flatMap((r) => [r.raterId, r.rateeId]))];
+  const users =
+    userIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, fullName: true, role: true },
+        })
+      : [];
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  return {
+    ratings: ratings.map((r) => ({
+      id: r.id,
+      tripId: r.tripId,
+      raterId: r.raterId,
+      raterName: userMap.get(r.raterId)?.fullName ?? r.raterId,
+      raterRole: r.raterRole,
+      rateeId: r.rateeId,
+      rateeName: userMap.get(r.rateeId)?.fullName ?? r.rateeId,
+      rateeRole: r.rateeRole,
+      stars: r.stars,
+      comment: r.comment ?? undefined,
+      createdAt: r.createdAt.toISOString(),
+    })),
+  };
+}

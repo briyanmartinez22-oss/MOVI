@@ -1,13 +1,54 @@
 import type { Notification, NotificationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { stringifyJsonField } from '../utils/normalize';
-import { getNotificationProvider, TRIP_PUSH_EVENTS } from './notificationProvider';
+import { getNotificationProvider } from './notificationProvider';
+
+export const TRIP_PUSH_TYPES = {
+  tripRequest: 'trip_request',
+  offerCreated: 'offer_created',
+  tripAccepted: 'trip_accepted',
+  driverArriving: 'driver_arriving',
+  driverArrived: 'driver_arrived',
+  tripStarted: 'trip_started',
+  tripCompleted: 'trip_completed',
+  tripCancelled: 'trip_cancelled',
+  newMessage: 'new_message',
+} as const;
+
+export type TripPushType = (typeof TRIP_PUSH_TYPES)[keyof typeof TRIP_PUSH_TYPES];
+
+/** @deprecated use TRIP_PUSH_TYPES */
+export const TRIP_PUSH_EVENTS = TRIP_PUSH_TYPES;
+
+function buildPushData(
+  type: TripPushType,
+  extra?: Record<string, unknown>
+): Record<string, string> {
+  const data: Record<string, string> = { type };
+  if (extra?.tripId != null) data.tripId = String(extra.tripId);
+  if (extra?.offerId != null) data.offerId = String(extra.offerId);
+  return data;
+}
 
 export async function registerPushToken(userId: string, token: string, platform: string, deviceId?: string) {
   return prisma.pushToken.upsert({
     where: { token },
     create: { userId, token, platform, deviceId },
     update: { userId, platform, deviceId, isActive: true, updatedAt: new Date() },
+  });
+}
+
+export async function deactivatePushTokensForUser(userId: string, token?: string) {
+  if (token) {
+    await prisma.pushToken.updateMany({
+      where: { userId, token },
+      data: { isActive: false },
+    });
+    return;
+  }
+  await prisma.pushToken.updateMany({
+    where: { userId },
+    data: { isActive: false },
   });
 }
 
@@ -62,7 +103,7 @@ export async function dispatchPush(
     where: { userId, isActive: true },
     select: { token: true },
   });
-  if (!tokens.length) return { sent: 0, mode: 'none' as const };
+  if (!tokens.length) return { sent: 0, failed: 0, mode: 'none' as const };
 
   const provider = await getNotificationProvider();
   return provider.sendPush(
@@ -78,13 +119,12 @@ export async function notifyUser(
   type: NotificationType,
   title: string,
   body: string,
-  eventKey?: string,
+  pushType: TripPushType,
   extra?: Record<string, unknown>
 ) {
-  await createNotification(userId, type, title, body, { event: eventKey, ...extra });
-  void dispatchPush(userId, title, body, eventKey ? { event: eventKey } : undefined).catch((err) => {
+  const payload = { type: pushType, ...extra };
+  await createNotification(userId, type, title, body, payload);
+  void dispatchPush(userId, title, body, buildPushData(pushType, extra)).catch((err) => {
     console.warn('[notifyUser] push dispatch failed:', err);
   });
 }
-
-export { TRIP_PUSH_EVENTS };

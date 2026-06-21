@@ -179,6 +179,8 @@ export interface AuthUser {
   profilePhoto?: string;
   createdAt: string;
   updatedAt: string;
+  /** Rol granular admin (solo usuarios role=admin). */
+  staffRole?: 'SUPER_ADMIN' | 'OPS_ADMIN' | 'SUPPORT_ADMIN' | 'FINANCE_ADMIN' | 'COMPLIANCE_ADMIN';
 }
 
 /** @deprecated use AuthUser fields directly — kept for gradual migration */
@@ -302,6 +304,8 @@ export interface TripHistoryRecord {
   durationMinutes: number;
   status: string;
   completedAt: string;
+  cancelledAt?: string;
+  cancelledBy?: 'passenger' | 'driver';
 }
 
 export type HotspotServiceCategory = 'viaje' | 'entrega' | 'carga';
