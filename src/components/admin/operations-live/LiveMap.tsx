@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import type { LiveDriver } from '../../../types/operationsLive';
 import type { MapMarker, TripRequest } from '../../../types';
 import { colors, typography, spacing, radius } from '../../../theme';
-import { LiveTrackingMapView, type LiveTrackingMapHandle } from './LiveTrackingMapView';
+import type { LiveTrackingMapHandle } from '../../../shared/operations-live/liveMapCore';
+import { LiveTrackingMapView } from './LiveTrackingMapView';
 
 type Props = {
   drivers: LiveDriver[];

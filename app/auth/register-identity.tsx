@@ -44,19 +44,19 @@ export default function RegisterIdentityScreen() {
       setError('Ingresa un teléfono válido (+503 o +1)');
       return;
     }
-    if (!dui.trim()) {
-      setError('Ingresa tu DUI');
-      return;
-    }
     if (!pendingFlow || !returnRoute) {
       setError('Flujo de registro inválido');
+      return;
+    }
+    if (pendingFlow !== 'driver_register' && !dui.trim()) {
+      setError('Ingresa tu DUI');
       return;
     }
 
     setError('');
     const forward: Record<string, string> = {
       phone,
-      dui,
+      dui: pendingFlow === 'driver_register' ? '' : dui,
       flow: 'register',
       returnRoute,
       pendingFlow,
@@ -86,7 +86,11 @@ export default function RegisterIdentityScreen() {
       <ScreenHeader title="Verificar identidad" onBack={() => router.back()} />
       <KeyboardAwareScreen scroll contentContainerStyle={styles.content}>
         <MoviLogo size="md" style={styles.logo} />
-        <Text style={styles.intro}>Ingresa tu teléfono y DUI para continuar</Text>
+        <Text style={styles.intro}>
+          {pendingFlow === 'driver_register'
+            ? 'Ingresa tu teléfono para verificar tu cuenta'
+            : 'Ingresa tu teléfono y DUI para continuar'}
+        </Text>
         <FormInput
           label="Teléfono"
           value={phone}
@@ -95,13 +99,15 @@ export default function RegisterIdentityScreen() {
           keyboardType="phone-pad"
           hint={FIELD_HINTS.phone}
         />
-        <FormInput
-          label="DUI"
-          value={dui}
-          onChangeText={setDui}
-          placeholder="01234567-8"
-          hint={FIELD_HINTS.dui}
-        />
+        {pendingFlow !== 'driver_register' ? (
+          <FormInput
+            label="DUI"
+            value={dui}
+            onChangeText={setDui}
+            placeholder="01234567-8"
+            hint={FIELD_HINTS.dui}
+          />
+        ) : null}
         <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton title="Continuar" onPress={handleContinue} loading={loading} />

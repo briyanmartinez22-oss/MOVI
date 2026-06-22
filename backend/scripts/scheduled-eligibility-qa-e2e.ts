@@ -7,6 +7,8 @@ import {
   isSchedulableVehicleType,
   normalizeVehicleType,
 } from '../src/services/providerEligibility.service';
+import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+import { loginAsSuperAdmin } from './admin-qa-auth';
 
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
@@ -55,15 +57,19 @@ async function registerOwnerVehicleDriver(
   label: string,
   location: { latitude: number; longitude: number }
 ) {
-  const adminToken = await loginAs('70801111', '00000000-0');
+  const adminToken = await loginAsSuperAdmin();
   const ownerPhone = nextSalvadorPhone('71');
   await req('/auth/request-otp', { phone: ownerPhone });
   await req('/auth/verify-otp', { phone: ownerPhone, code: OTP });
-  const ownerReg = await req('/owners/register', {
-    phone: ownerPhone,
-    dui: `${Math.floor(Math.random() * 89999999 + 10000000)}-${Math.floor(Math.random() * 9)}`,
-    fullName: `QA Owner ${label}`,
-  });
+  const ownerReg = await req(
+    '/owners/register',
+    ownerRegisterPayload(
+      ownerPhone,
+      `${Math.floor(Math.random() * 89999999 + 10000000)}-${Math.floor(Math.random() * 9)}`,
+      'QA',
+      `Owner ${label}`
+    )
+  );
   if (!ownerReg.json.ok) {
     throw new Error(`Owner registration failed (${label}): ${ownerReg.json.error}`);
   }
@@ -98,12 +104,10 @@ async function registerOwnerVehicleDriver(
   const driverPhone = nextSalvadorPhone('72');
   await req('/auth/request-otp', { phone: driverPhone });
   await req('/auth/verify-otp', { phone: driverPhone, code: OTP });
-  const driverReg = await req('/drivers/register-with-invite', {
-    phone: driverPhone,
-    dui: `${Math.floor(Math.random() * 89999999 + 10000000)}-${Math.floor(Math.random() * 9)}`,
-    fullName: `QA Driver ${label}`,
-    code: inviteCode,
-  });
+  const driverReg = await req(
+    '/drivers/register-with-invite',
+    driverInviteRegisterPayload(driverPhone, inviteCode, 'QA', `Driver ${label}`)
+  );
   if (!driverReg.json.ok) {
     throw new Error(`Driver registration failed (${label}): ${driverReg.json.error}`);
   }

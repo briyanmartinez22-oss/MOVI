@@ -60,6 +60,7 @@ export async function apiFetch<T>(
       return {
         ok: false,
         error: payload?.error ?? `Error del servidor (${response.status})`,
+        code: payload?.code,
       };
     }
 

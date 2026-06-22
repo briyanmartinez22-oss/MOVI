@@ -4,10 +4,7 @@
  * Usage: npm run db:reset-beta -- --confirm
  */
 import { PrismaClient } from '@prisma/client';
-import {
-  ensureSuperAdmin,
-  SUPER_ADMIN_PHONE,
-} from '../src/services/ensure-super-admin.service';
+import { runBetaPlatformReset } from '../src/services/beta-reset.service';
 
 const prisma = new PrismaClient();
 
@@ -25,68 +22,17 @@ async function main() {
     return;
   }
 
-  const superAdmin = await ensureSuperAdmin();
-  const keepUserId = superAdmin.userId;
-
-  console.log(`Conservando SUPER_ADMIN: ${SUPER_ADMIN_PHONE} (${keepUserId})\n`);
-
-  const counts: Record<string, number> = {};
-
-  async function del(label: string, fn: () => Promise<{ count: number }>) {
-    const { count } = await fn();
-    counts[label] = count;
-    console.log(`  ✓ ${label}: ${count}`);
-  }
-
-  await del('SupportTicketMessage', () => prisma.supportTicketMessage.deleteMany({}));
-  await del('SupportTicket', () => prisma.supportTicket.deleteMany({}));
-  await del('OperationalAlert', () => prisma.operationalAlert.deleteMany({}));
-  await del('Notification', () =>
-    prisma.notification.deleteMany({ where: { NOT: { userId: keepUserId } } })
-  );
-  await del('PushToken', () =>
-    prisma.pushToken.deleteMany({ where: { NOT: { userId: keepUserId } } })
-  );
-  await del('Payment', () => prisma.payment.deleteMany({}));
-  await del('ChatMessage', () => prisma.chatMessage.deleteMany({}));
-  await del('TripRating', () => prisma.tripRating.deleteMany({}));
-  await del('TripOffer', () => prisma.tripOffer.deleteMany({}));
-  await del('Delivery', () => prisma.delivery.deleteMany({}));
-  await del('LocationPing', () => prisma.locationPing.deleteMany({}));
-  await del('Trip', () => prisma.trip.deleteMany({}));
-  await del('DriverSession', () => prisma.driverSession.deleteMany({}));
-  await del('DriverSubscription', () => prisma.driverSubscription.deleteMany({}));
-  await del('VehicleAssignment', () => prisma.vehicleAssignment.deleteMany({}));
-  await del('VerificationDocument', () => prisma.verificationDocument.deleteMany({}));
-  await del('InviteCode', () => prisma.inviteCode.deleteMany({}));
-  await del('Driver', () => prisma.driver.deleteMany({}));
-  await del('Vehicle', () => prisma.vehicle.deleteMany({}));
-  await del('Owner', () => prisma.owner.deleteMany({}));
-  await del('Business', () => prisma.business.deleteMany({}));
-  await del('TripHistory', () => prisma.tripHistory.deleteMany({}));
-  await del('DeliveryHistory', () => prisma.deliveryHistory.deleteMany({}));
-  await del('OtpChallenge', () => prisma.otpChallenge.deleteMany({}));
-  await del('RefreshToken (no SUPER_ADMIN)', () =>
-    prisma.refreshToken.deleteMany({ where: { NOT: { userId: keepUserId } } })
-  );
-  await del('AdminStaffProfile (no SUPER_ADMIN)', () =>
-    prisma.adminStaffProfile.deleteMany({ where: { NOT: { userId: keepUserId } } })
-  );
-  await del('UserRoleAssignment (no SUPER_ADMIN)', () =>
-    prisma.userRoleAssignment.deleteMany({ where: { NOT: { userId: keepUserId } } })
-  );
-  await del('Users demo/QA', () =>
-    prisma.user.deleteMany({ where: { NOT: { id: keepUserId } } })
-  );
-
-  const verified = await ensureSuperAdmin();
+  const result = await runBetaPlatformReset(prisma);
 
   console.log('\n=== BETA RESET COMPLETE ===');
-  console.log('SUPER_ADMIN:', SUPER_ADMIN_PHONE);
-  console.log('userId:', verified.userId);
-  console.log('staffRole:', verified.staffRole);
-  console.log('Auditorías conservadas:', await prisma.auditLog.count());
-  console.log('Total registros eliminados:', Object.values(counts).reduce((a, b) => a + b, 0));
+  console.log('SUPER_ADMIN:', result.superAdminPhone);
+  console.log('userId:', result.superAdminUserId);
+  console.log('staffRole:', result.staffRole);
+  console.log('Auditorías conservadas:', result.auditLogsKept);
+  console.log('Total registros eliminados:', result.totalDeleted);
+  Object.entries(result.deleted).forEach(([label, count]) => {
+    if (count > 0) console.log(`  ${label}: ${count}`);
+  });
 }
 
 main()

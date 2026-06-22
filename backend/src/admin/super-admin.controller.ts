@@ -1,5 +1,6 @@
-import { Controller, Get, HttpException, HttpStatus, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpException, HttpStatus, Param, Post, Body, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
+import { z } from 'zod';
 import { AdminStaffRoles, RequirePermission } from '../common/decorators/admin-staff.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AdminStaffGuard } from '../common/guards/admin-staff.guard';
@@ -26,6 +27,10 @@ import {
 import { writeAdminAudit } from '../services/audit.service';
 import { getAdminStaffRole } from '../services/admin-staff.service';
 import { getMe } from '../services/moviService';
+import {
+  getPlatformDataSummary,
+  runBetaPlatformReset,
+} from '../services/beta-reset.service';
 
 type AuthRequest = Request & { auth?: AuthPayload };
 
@@ -61,6 +66,49 @@ export class SuperAdminController {
   @RequirePermission('admin.create')
   async admins() {
     return { admins: await listAdminStaff() };
+  }
+
+  @Get('system/data-summary')
+  @RequirePermission('system.integrations')
+  async dataSummary() {
+    return await getPlatformDataSummary(prisma);
+  }
+
+  @Post('system/reset-beta')
+  @RequirePermission('system.integrations')
+  async resetBeta(@Body() body: unknown, @Req() req: AuthRequest) {
+    const parsed = z
+      .object({ confirm: z.literal('RESET_BETA_PLATFORM') })
+      .safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        'Confirmación requerida: { "confirm": "RESET_BETA_PLATFORM" }',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+
+    const actorRole = await getAdminStaffRole(req.auth!.userId);
+    const summaryBefore = await getPlatformDataSummary(prisma);
+    const result = await runBetaPlatformReset(prisma);
+
+    await writeAdminAudit({
+      userId: req.auth!.userId,
+      actorRole: actorRole ?? undefined,
+      action: 'delete',
+      entityType: 'platform',
+      entityId: 'beta-reset',
+      before: summaryBefore as Record<string, unknown>,
+      after: {
+        totalDeleted: result.totalDeleted,
+        superAdminUserId: result.superAdminUserId,
+      },
+    });
+
+    return {
+      ok: true,
+      before: summaryBefore,
+      ...result,
+    };
   }
 
   @Get('system/status')

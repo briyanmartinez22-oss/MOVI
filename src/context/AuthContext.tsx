@@ -32,13 +32,24 @@ interface AuthContextValue {
   refresh: () => void;
   bootstrap: () => Promise<void>;
   registerPassenger: (phone: string, fullName: string) => Promise<{ ok: boolean; error?: string }>;
-  registerOwner: (phone: string, fullName: string, dui: string) => Promise<{ ok: boolean; error?: string }>;
-  registerDriverWithCode: (
+  registerOwner: (
     phone: string,
+    firstName: string,
+    lastName: string,
     dui: string,
-    fullName: string,
-    code: string
+    email?: string,
+    documentType?: 'DUI' | 'LICENSE'
   ) => Promise<{ ok: boolean; error?: string }>;
+  registerDriverWithCode: (input: {
+    phone: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    birthDate?: string;
+    code: string;
+    licenseFront: string;
+    licenseBack: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   getDailySessionSummary: (driverId: string) => DailySessionSummary;
   getAllDriverSessions: (driverId: string) => DriverSession[];
 }
@@ -133,18 +144,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: false, error: res.error };
   }, []);
 
-  const registerOwner = useCallback(async (phone: string, fullName: string, dui: string) => {
-    const res = await api.registerOwner(phone, fullName, dui);
-    if (res.ok && res.data) {
-      setUser(res.data.user);
-      return { ok: true };
-    }
-    return { ok: false, error: res.error };
-  }, []);
+  const registerOwner = useCallback(
+    async (
+      phone: string,
+      firstName: string,
+      lastName: string,
+      dui: string,
+      email?: string,
+      documentType?: 'DUI' | 'LICENSE'
+    ) => {
+      const res = await api.registerOwner(phone, firstName, lastName, dui, email, documentType);
+      if (res.ok && res.data) {
+        setUser(res.data.user);
+        return { ok: true };
+      }
+      return { ok: false, error: res.error };
+    },
+    []
+  );
 
   const registerDriverWithCode = useCallback(
-    async (phone: string, dui: string, fullName: string, code: string) => {
-      const res = await api.registerDriverWithInvite(phone, dui, fullName, code);
+    async (input: {
+      phone: string;
+      firstName: string;
+      lastName: string;
+      email?: string;
+      birthDate?: string;
+      code: string;
+      licenseFront: string;
+      licenseBack: string;
+    }) => {
+      const res = await api.registerDriverWithInvite(input);
       if (res.ok && res.data) {
         setUser(res.data.user);
         return { ok: true };

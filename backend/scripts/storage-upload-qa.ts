@@ -1,6 +1,8 @@
 /**
  * Shared storage/upload QA helpers for integration scripts.
  */
+import { ownerRegisterPayload } from './qa-registration';
+
 const MINIMAL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
   'base64'
@@ -54,11 +56,9 @@ export async function loginOwnerForUpload(
   const reg = await fetch(`${api}/owners/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      phone,
-      dui: `${String(Date.now()).slice(-8)}-0`,
-      fullName: 'QA Storage Owner',
-    }),
+    body: JSON.stringify(
+      ownerRegisterPayload(phone, `${String(Date.now()).slice(-8)}-0`, 'QA', 'Storage Owner')
+    ),
   });
   const regJson = (await reg.json()) as {
     ok?: boolean;

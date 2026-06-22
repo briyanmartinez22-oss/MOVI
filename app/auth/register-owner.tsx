@@ -11,19 +11,23 @@ import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { useAsyncAction } from '../../src/utils/asyncAction';
 import { showSuccess } from '../../src/utils/feedback';
 import { useAuth } from '../../src/context/AuthContext';
-import * as mockApi from '../../src/services/mockApi';
+import { uploadOwnerDocuments, submitOwnerVerification } from '../../src/services/api';
+import { resolveCurrentProfiles } from '../../src/services/profileCache';
 import { getOwnerByUserId } from '../../src/services/profileData';
 import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { SpecialCaseType } from '../../src/types/models';
 import { colors, typography, spacing } from '../../src/theme';
 
-const DOC_FIELDS = [
-  { key: 'duiFront', label: 'DUI frente' },
-  { key: 'duiBack', label: 'DUI reverso' },
-  { key: 'selfie', label: 'Selfie en tiempo real' },
-  { key: 'license', label: 'Licencia' },
-  { key: 'registrationCard', label: 'Tarjeta de circulación' },
-] as const;
+const DOC_FIELDS_BY_TYPE = {
+  DUI: [
+    { key: 'duiFront' as const, label: 'DUI — frontal' },
+    { key: 'duiBack' as const, label: 'DUI — trasera' },
+  ],
+  LICENSE: [
+    { key: 'licenseFront' as const, label: 'Licencia — frontal' },
+    { key: 'licenseBack' as const, label: 'Licencia — trasera' },
+  ],
+};
 
 export default function RegisterOwnerScreen() {
   const { phone, dui: duiParam, verified, action, consented, name: nameParam } = useLocalSearchParams<{
@@ -35,8 +39,11 @@ export default function RegisterOwnerScreen() {
     name?: string;
   }>();
   const router = useRouter();
-  const { user, refresh } = useAuth();
-  const [name, setName] = useState(nameParam ?? '');
+  const { user, refresh, registerOwner } = useAuth();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [documentType, setDocumentType] = useState<'DUI' | 'LICENSE'>('DUI');
   const [termsAccepted, setTermsAccepted] = useState(consented === '1');
   const [privacyAccepted, setPrivacyAccepted] = useState(consented === '1');
   const [duiAccepted, setDuiAccepted] = useState(consented === '1');
@@ -52,10 +59,18 @@ export default function RegisterOwnerScreen() {
   const submitRegister = async () => {
     setError('');
     await run(async () => {
-      const res = await mockApi.registerOwner(phone ?? '', name.trim(), duiParam ?? '');
-      if (res.ok && res.data) {
+      const res = await registerOwner(
+        phone ?? '',
+        firstName.trim(),
+        lastName.trim(),
+        duiParam ?? '',
+        email.trim() || undefined,
+        documentType
+      );
+      if (res.ok) {
         refresh();
-        setOwnerId(res.data.owner.id);
+        const cachedOwner = resolveCurrentProfiles().owner;
+        if (cachedOwner) setOwnerId(cachedOwner.id);
         setStep('docs');
       } else setError(res.error ?? 'Error');
     });
@@ -69,8 +84,8 @@ export default function RegisterOwnerScreen() {
   }, [action]);
 
   const handleRegister = async () => {
-    if (!name.trim()) {
-      setError('Completa todos los campos');
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('Completa nombres y apellidos');
       return;
     }
     if (verified !== '1') {
@@ -88,13 +103,13 @@ export default function RegisterOwnerScreen() {
     void submitRegister();
   };
 
-  const uploadDoc = async (key: typeof DOC_FIELDS[number]['key']) => {
+  const uploadDoc = async (key: 'duiFront' | 'duiBack' | 'licenseFront' | 'licenseBack') => {
     const id = ownerId || owner?.id;
     if (!id) return;
     const { pickAndUploadDocument } = await import('../../src/services/uploadService');
     const url = await pickAndUploadDocument(key);
     if (!url) return;
-    await mockApi.uploadOwnerDocuments(id, { [key]: url });
+    await uploadOwnerDocuments(id, { [key]: url });
     refresh();
   };
 
@@ -102,7 +117,11 @@ export default function RegisterOwnerScreen() {
     const id = ownerId || owner?.id;
     if (!id) return;
     await run(async () => {
-      await mockApi.submitOwnerVerification(id, specialCase);
+      const res = await submitOwnerVerification(id, specialCase);
+      if (!res.ok) {
+        setError(res.error ?? 'Error al enviar verificación');
+        return;
+      }
       setStep('done');
       refresh();
       showSuccess('Verificación enviada', 'Un administrador revisará tus documentos pronto.');
@@ -122,7 +141,26 @@ export default function RegisterOwnerScreen() {
             <Text style={styles.duiLabel}>DUI</Text>
             <Text style={styles.duiValue}>{duiParam ?? ''}</Text>
             <Text style={styles.duiHint}>{FIELD_HINTS.dui}</Text>
-            <FormInput label="Nombre completo" value={name} onChangeText={setName} placeholder="Roberto Sánchez" hint={FIELD_HINTS.fullName} />
+            <FormInput label="Nombres" value={firstName} onChangeText={setFirstName} placeholder="Roberto" />
+            <FormInput label="Apellidos" value={lastName} onChangeText={setLastName} placeholder="Sánchez" />
+            <FormInput
+              label="Correo (opcional)"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="correo@ejemplo.com"
+            />
+            <Text style={styles.duiLabel}>Tipo de documento</Text>
+            <View style={styles.row}>
+              {(['DUI', 'LICENSE'] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.typeBtn, documentType === t && styles.typeBtnActive]}
+                  onPress={() => setDocumentType(t)}
+                >
+                  <Text style={styles.typeBtnText}>{t === 'DUI' ? 'DUI' : 'Licencia'}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <LegalConsentCheckbox
               termsAccepted={termsAccepted}
               privacyAccepted={privacyAccepted}
@@ -138,7 +176,7 @@ export default function RegisterOwnerScreen() {
         {step === 'docs' && (
           <>
             <Text style={styles.sectionTitle}>Verificación de identidad</Text>
-            {DOC_FIELDS.map((doc) => (
+            {DOC_FIELDS_BY_TYPE[documentType].map((doc) => (
               <TouchableOpacity key={doc.key} style={styles.docBtn} onPress={() => uploadDoc(doc.key)}>
                 <Text style={styles.docLabel}>{doc.label}</Text>
                 <Text style={styles.docAction}>Subir foto</Text>
@@ -188,4 +226,14 @@ const styles = StyleSheet.create({
   docAction: { ...typography.caption, color: colors.textSecondary },
   docBtnActive: { borderWidth: 1.5, borderColor: colors.primary },
   hint: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.md },
+  row: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  typeBtn: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: 12,
+    backgroundColor: colors.borderLight,
+    alignItems: 'center',
+  },
+  typeBtnActive: { borderWidth: 1.5, borderColor: colors.primary },
+  typeBtnText: { ...typography.caption, color: colors.text },
 });

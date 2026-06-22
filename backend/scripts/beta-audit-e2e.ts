@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 /** Auditoría E2E real — local con DEMO_OTP_ENABLED=true */
 import { PrismaClient } from '@prisma/client';
+import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
 
 const prisma = new PrismaClient();
 const API = process.env.API_URL ?? 'http://localhost:3001';
@@ -140,7 +141,10 @@ async function main() {
   const oPhone = `71${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone: oPhone });
   await req('/auth/verify-otp', { phone: oPhone, code: OTP });
-  const regO = await req('/owners/register', { phone: oPhone, dui: '33333333-3', fullName: 'Beta Audit Owner' });
+  const regO = await req(
+    '/owners/register',
+    ownerRegisterPayload(oPhone, '33333333-3', 'Beta', 'Audit Owner')
+  );
   rec('CONDUCTOR', '1. Registro owner', regO.json.ok === true, regO.json.error);
   const ownerId = regO.json.data?.owner?.id as string;
   const oToken = regO.json.data?.authToken as string;
@@ -162,12 +166,10 @@ async function main() {
   const dPhone = `78${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone: dPhone });
   await req('/auth/verify-otp', { phone: dPhone, code: OTP });
-  const regD = await req('/drivers/register-with-invite', {
-    phone: dPhone,
-    dui: '44444444-4',
-    fullName: 'Beta Audit Driver',
-    code,
-  });
+  const regD = await req(
+    '/drivers/register-with-invite',
+    driverInviteRegisterPayload(dPhone, code, 'Beta', 'Audit Driver')
+  );
   rec('CONDUCTOR', '1c. Registro conductor', regD.json.ok === true, regD.json.error);
   const driverId = regD.json.data?.driver?.id as string;
   const dToken = regD.json.data?.authToken as string;

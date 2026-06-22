@@ -1,6 +1,7 @@
 export { OperationsLiveKpiBar } from './OperationsLiveKpiBar';
 export { LiveMap } from './LiveMap';
 export { LiveTrackingMapView } from './LiveTrackingMapView';
+export type { LiveTrackingMapHandle } from '../../../shared/operations-live/liveMapCore';
 export { LiveTripsTable } from './LiveTripsTable';
 export { AlertCenter } from './AlertCenter';
 export { IntelligentAlertCenter } from './IntelligentAlertCenter';

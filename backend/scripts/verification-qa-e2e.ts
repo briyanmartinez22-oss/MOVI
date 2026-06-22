@@ -3,6 +3,9 @@
  * QA — flujo verificaciones admin
  * Usage: npx tsx scripts/verification-qa-e2e.ts
  */
+import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+import { loginAsSuperAdmin } from './admin-qa-auth';
+
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
 
@@ -43,11 +46,10 @@ async function run() {
   const ownerPhone = `73${String(ts).slice(-6)}`;
   await req('/auth/request-otp', { phone: ownerPhone });
   await req('/auth/verify-otp', { phone: ownerPhone, code: OTP });
-  const regOwner = await req('/owners/register', {
-    phone: ownerPhone,
-    dui: '88888888-8',
-    fullName: 'QA Verif Owner',
-  });
+  const regOwner = await req(
+    '/owners/register',
+    ownerRegisterPayload(ownerPhone, '88888888-8', 'QA', 'Verif Owner')
+  );
   const ownerId = regOwner.json.data?.owner?.id as string;
   const ownerToken = regOwner.json.data?.authToken as string;
   record('1. Registro dueño', regOwner.json.ok === true, regOwner.json.error);
@@ -75,7 +77,7 @@ async function run() {
   await req('/owners/submit-verification', {}, ownerToken);
   record('3. Subida documentos + envío a revisión', true);
 
-  const adminToken = await loginAs('70801111', '00000000-0');
+  const adminToken = await loginAsSuperAdmin();
   const pendingBefore = await req('/admin/verifications/pending', undefined, adminToken);
   const ownersInPanel = (pendingBefore.json.data?.owners ?? []) as { id: string }[];
   const vehiclesInPanel = (pendingBefore.json.data?.vehicles ?? []) as { vehicleId: string }[];
@@ -95,12 +97,10 @@ async function run() {
   const driverPhone = `74${String(ts).slice(-6)}`;
   await req('/auth/request-otp', { phone: driverPhone });
   await req('/auth/verify-otp', { phone: driverPhone, code: OTP });
-  const regDriver = await req('/drivers/register-with-invite', {
-    phone: driverPhone,
-    dui: '99999999-9',
-    fullName: 'QA Verif Driver',
-    code: inviteCode,
-  });
+  const regDriver = await req(
+    '/drivers/register-with-invite',
+    driverInviteRegisterPayload(driverPhone, inviteCode, 'QA', 'Verif Driver')
+  );
   const driverId = regDriver.json.data?.driver?.id as string;
   const driverToken = regDriver.json.data?.authToken as string;
   record(
@@ -113,7 +113,7 @@ async function run() {
   const driversInPanel = (pendingDriver.json.data?.drivers ?? []) as { id: string; mvpStatus: string }[];
   record(
     '7. Conductor aparece en panel',
-    pendingDriver.json.ok && driversInPanel.some((d) => d.id === driverId && d.mvpStatus === 'PENDING_REVIEW')
+    pendingDriver.json.ok && driversInPanel.some((d) => d.id === driverId && d.mvpStatus === 'PENDING_APPROVAL')
   );
 
   const approveDriver = await req(`/admin/drivers/${driverId}/approve`, {}, adminToken);

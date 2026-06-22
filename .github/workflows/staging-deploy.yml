@@ -1,0 +1,129 @@
+name: Staging Deploy
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: movi
+          POSTGRES_PASSWORD: movi
+          POSTGRES_DB: movi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U movi -d movi"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Prisma validate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://movi:movi@localhost:5432/movi?schema=public
+        run: npm run prisma:validate
+
+      - name: Apply migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://movi:movi@localhost:5432/movi?schema=public
+        run: npm run db:migrate:deploy
+
+      - name: Backend build
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://movi:movi@localhost:5432/movi?schema=public
+        run: npm run build
+
+      - name: Frontend typecheck
+        run: npm run typecheck
+
+      - name: Seed super admin
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://movi:movi@localhost:5432/movi?schema=public
+          DEMO_OTP_ENABLED: 'true'
+        run: npm run db:seed-super-admin
+
+      - name: Start backend for QA
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://movi:movi@localhost:5432/movi?schema=public
+          PORT: '3001'
+          JWT_SECRET: ci-staging-secret
+          DEMO_OTP_ENABLED: 'true'
+          DEMO_OTP_CODE: '123456'
+          CORS_ORIGIN: '*'
+        run: |
+          node dist/main.js &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3001/health && break
+            sleep 2
+          done
+
+      - name: CI QA gate (100% required)
+        working-directory: backend
+        env:
+          API_URL: http://localhost:3001
+          DEMO_OTP_ENABLED: 'true'
+          DEMO_OTP_CODE: '123456'
+          DATABASE_URL: postgresql://movi:movi@localhost:5432/movi?schema=public
+        run: npm run test
+
+  deploy-staging:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy backend to Railway STAGING
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_STAGING_BACKEND_SERVICE_ID }}
+        run: railway up --service "$RAILWAY_SERVICE_ID" --detach
+
+      - name: Post-deploy smoke (staging)
+        env:
+          STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
+          DEMO_OTP_CODE: ${{ secrets.DEMO_OTP_CODE || '123456' }}
+        run: |
+          test -n "$STAGING_API_URL"
+          for i in $(seq 1 30); do
+            curl -sf "$STAGING_API_URL/health" && exit 0
+            sleep 5
+          done
+          echo "Staging health check failed"
+          exit 1

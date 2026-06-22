@@ -7,6 +7,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~54.0.0",
+    "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-device": "~8.0.10",
     "expo-font": "~14.0.12",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@expo/ngrok": "^4.1.0",
     "@types/react": "~19.1.0",
+    "eas-cli": "^20.3.0",
     "typescript": "~5.9.2"
   },
   "scripts": {
@@ -52,7 +54,9 @@
     "qa:support": "cd backend && npm run qa:support",
     "qa:admin-all": "cd backend && npm run qa:admin-all",
     "qa:admin-entities": "cd backend && npm run qa:admin-entities",
-    "qa:db-integrity": "cd backend && npm run qa:db-integrity"
+    "qa:db-integrity": "cd backend && npm run qa:db-integrity",
+    "test": "cd backend && npm run test",
+    "test:ci": "cd backend && npm run test:ci"
   },
   "private": true
 }

@@ -238,6 +238,10 @@ export interface Vehicle {
   maxLoadKg?: number;
   bedLengthM?: number;
   hasCargoCover?: boolean;
+  brand?: string;
+  model?: string;
+  year?: number;
+  color?: string;
   createdAt: string;
 }
 
@@ -331,6 +335,7 @@ export interface ApiResponse<T> {
   ok: boolean;
   data?: T;
   error?: string;
+  code?: string;
 }
 
 export interface PlateCheckResult {
@@ -361,7 +366,7 @@ export function canOperate(
     return { allowed: false, reason: 'Unidad no aprobada.' };
   }
   if (!driver || driver.status !== 'approved') {
-    return { allowed: false, reason: 'Conductor no aprobado.' };
+    return { allowed: false, reason: 'Conductor pendiente de aprobación administrativa.' };
   }
   if (!driver.inviteCodeUsed) {
     return { allowed: false, reason: 'Conductor no invitado por el dueño.' };

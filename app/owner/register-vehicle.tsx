@@ -8,7 +8,11 @@ import { KeyboardAwareScreen } from '../../src/components/KeyboardAwareScreen';
 import { showSuccess } from '../../src/utils/feedback';
 import { ASSOCIATIONS } from '../../src/data/mock';
 import { useAuth } from '../../src/context/AuthContext';
-import * as mockApi from '../../src/services/mockApi';
+import {
+  registerVehicle,
+  uploadVehicleDocuments,
+  submitVehicleVerification,
+} from '../../src/services/api';
 import { getOwnerByUserId } from '../../src/services/profileData';
 import { VehicleType } from '../../src/types/models';
 import { isCargoVehicleType, VEHICLE_TYPE_META, VEHICLE_TYPE_OPTIONS } from '../../src/utils/vehicleTypes';
@@ -34,6 +38,10 @@ export default function RegisterVehicle() {
   const owner = user ? getOwnerByUserId(user.userId) : null;
   const [unitNumber, setUnitNumber] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
+  const [brand, setBrand] = useState('');
+  const [model, setModel] = useState('');
+  const [year, setYear] = useState('');
+  const [color, setColor] = useState('');
   const [associationName, setAssociationName] = useState<string>(ASSOCIATIONS[0]);
   const [registrationName, setRegistrationName] = useState('');
   const [vehicleType, setVehicleType] = useState<VehicleType>('mototaxi');
@@ -49,12 +57,16 @@ export default function RegisterVehicle() {
 
   const handleRegister = async () => {
     if (!owner) { setError('Dueño no encontrado'); return; }
-    const res = await mockApi.registerVehicle(owner.id, {
+    const res = await registerVehicle(owner.id, {
       unitNumber,
       plateNumber,
       associationName,
       registrationName: registrationName.trim() || undefined,
       vehicleType,
+      brand: brand.trim() || undefined,
+      model: model.trim() || undefined,
+      year: year ? Number(year) : undefined,
+      color: color.trim() || undefined,
       maxLoadKg: showCargoFields && maxLoadKg ? Number(maxLoadKg) : undefined,
       bedLengthM: showCargoFields && bedLengthM ? Number(bedLengthM) : undefined,
       hasCargoCover: showCargoFields ? hasCargoCover : undefined,
@@ -68,7 +80,7 @@ export default function RegisterVehicle() {
     const { pickAndUploadDocument } = await import('../../src/services/uploadService');
     const url = await pickAndUploadDocument(key);
     if (!url) return;
-    await mockApi.uploadVehicleDocuments(vehicleId, {
+    await uploadVehicleDocuments(vehicleId, {
       [key]: url,
       ...(key === 'registrationCardImage' && registrationName
         ? { registrationName: registrationName.trim() }
@@ -77,7 +89,11 @@ export default function RegisterVehicle() {
   };
 
   const submit = async () => {
-    await mockApi.submitVehicleVerification(vehicleId);
+    const res = await submitVehicleVerification(vehicleId);
+    if (!res.ok) {
+      setError(res.error ?? 'Error al enviar verificación');
+      return;
+    }
     showSuccess('Unidad enviada', `Tu ${vehicleLabel} está en revisión por el equipo MOVI.`);
     router.replace('/owner/vehicles');
   };
@@ -106,6 +122,10 @@ export default function RegisterVehicle() {
 
             <FormInput label="Número de unidad" value={unitNumber} onChangeText={setUnitNumber} placeholder="015" />
             <FormInput label="Placa" value={plateNumber} onChangeText={setPlateNumber} placeholder="MTX-205" />
+            <FormInput label="Marca" value={brand} onChangeText={setBrand} placeholder="Suzuki" />
+            <FormInput label="Modelo" value={model} onChangeText={setModel} placeholder="GN125" />
+            <FormInput label="Año" value={year} onChangeText={setYear} placeholder="2022" keyboardType="numeric" />
+            <FormInput label="Color" value={color} onChangeText={setColor} placeholder="Rojo" />
             <FormInput
               label="Nombre en tarjeta de circulación"
               value={registrationName}

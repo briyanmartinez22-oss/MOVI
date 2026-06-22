@@ -1,167 +1,213 @@
-import { useEffect, useRef, useState } from 'react';
-import { Text, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PrimaryButton, VehicleBadge, LegalConsentCheckbox, DuiConsentCheckbox } from '../../src/components';
+import { PrimaryButton, LegalConsentCheckbox } from '../../src/components';
 import { validateRegistrationConsent } from '../../src/utils/registrationConsent';
 import { Card, FormInput, ScreenHeader } from '../../src/components/FormUI';
 import { KeyboardAwareScreen } from '../../src/components/KeyboardAwareScreen';
 import { LoadingTimeoutBanner } from '../../src/components/LoadingTimeoutBanner';
 import { useAuth } from '../../src/context/AuthContext';
-import { fetchInvitePreview, getInvitePreview } from '../../src/services/mockApi';
+import { validateDriverInviteCode } from '../../src/services/api';
 import { useMockApi } from '../../src/services/api/config';
+import { fetchInvitePreview, getInvitePreview } from '../../src/services/mockApi';
 import { useAsyncAction } from '../../src/utils/asyncAction';
 import { showSuccess } from '../../src/utils/feedback';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { colors, typography, spacing } from '../../src/theme';
 
+const INVITE_ERROR_LABELS: Record<string, string> = {
+  INVITE_INVALID: 'Código inválido o no disponible.',
+  INVITE_EXPIRED: 'Este código expiró.',
+  INVITE_USED: 'Este código ya fue utilizado.',
+  OWNER_SUSPENDED: 'El dueño de esta unidad está suspendido.',
+  VEHICLE_DISABLED: 'Esta unidad no está disponible para registro.',
+};
+
+type InvitePreview = {
+  invite?: { code?: string; expiresAt?: string };
+  vehicle?: {
+    brand?: string;
+    model?: string;
+    year?: number;
+    platePartial?: string;
+    vehicleType?: string;
+  };
+  owner?: { name?: string; firstName?: string; lastName?: string };
+};
+
+type Step = 'code' | 'preview' | 'form';
+
 export default function RegisterDriverCodeScreen() {
   const router = useRouter();
-  const { phone, dui, verified, action, consented, name: nameParam, code: codeParam } = useLocalSearchParams<{
-    phone: string;
-    dui: string;
-    verified?: string;
-    action?: string;
-    consented?: string;
-    name?: string;
-    code?: string;
-  }>();
+  const { phone, verified } = useLocalSearchParams<{ phone: string; verified?: string }>();
   const { registerDriverWithCode } = useAuth();
-  const [name, setName] = useState(nameParam ?? '');
-  const [code, setCode] = useState(codeParam ?? '');
-  const [preview, setPreview] = useState<ReturnType<typeof getInvitePreview>>(null);
-  const [termsAccepted, setTermsAccepted] = useState(consented === '1');
-  const [privacyAccepted, setPrivacyAccepted] = useState(consented === '1');
-  const [duiAccepted, setDuiAccepted] = useState(consented === '1');
+
+  const [step, setStep] = useState<Step>('code');
+  const [code, setCode] = useState('');
+  const [preview, setPreview] = useState<InvitePreview | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [licenseFront, setLicenseFront] = useState('');
+  const [licenseBack, setLicenseBack] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [error, setError] = useState('');
-  const registerStarted = useRef(false);
   const { loading, timedOut, run, retry } = useAsyncAction();
 
-  useEffect(() => {
-    if (!codeParam?.trim()) return;
-    if (useMockApi()) {
-      const data = getInvitePreview(codeParam.trim());
-      if (data) setPreview(data);
+  const handleValidateCode = async () => {
+    if (!code.trim()) {
+      setError('Ingresa el código de invitación');
       return;
     }
-    void fetchInvitePreview(codeParam.trim()).then((data) => {
-      if (data) setPreview(data);
-    });
-  }, [codeParam]);
-
-  const handlePreview = async () => {
+    setError('');
     if (useMockApi()) {
       const data = getInvitePreview(code.trim());
       if (!data) {
-        setError('Código inválido o ya utilizado');
-        setPreview(null);
+        setError('Código inválido, expirado o ya utilizado');
         return;
       }
-      setError('');
-      setPreview(data);
+      setPreview(data as InvitePreview);
+      setStep('preview');
       return;
     }
-
-    setError('');
-    const data = await fetchInvitePreview(code.trim());
-    if (!data) {
-      setError('Código inválido o ya utilizado');
-      setPreview(null);
+    const res = await validateDriverInviteCode(code.trim());
+    if (!res.ok) {
+      setError(INVITE_ERROR_LABELS[res.code ?? ''] ?? res.error ?? 'Código inválido');
       return;
     }
-    setPreview(data);
+    setPreview(res.data as InvitePreview);
+    setStep('preview');
   };
 
-  const submitRegister = async () => {
-    setError('');
-    await run(async () => {
-      const res = await registerDriverWithCode(phone ?? '', dui ?? '', name.trim(), code.trim());
-      if (res.ok) {
-        showSuccess('¡Registro exitoso!', 'Ya puedes conectarte y recibir solicitudes.');
-        router.replace('/onboarding/driver');
-      } else setError(res.error ?? 'Error al registrar');
-    });
+  const uploadLicense = async (side: 'front' | 'back') => {
+    const { pickAndUploadDocument } = await import('../../src/services/uploadService');
+    const url = await pickAndUploadDocument(side === 'front' ? 'licenseFront' : 'licenseBack');
+    if (!url) return;
+    if (side === 'front') setLicenseFront(url);
+    else setLicenseBack(url);
   };
-
-  useEffect(() => {
-    if (action === 'register' && !registerStarted.current) {
-      registerStarted.current = true;
-      void submitRegister();
-    }
-  }, [action]);
 
   const handleRegister = async () => {
-    if (!name.trim() || !code.trim()) {
-      setError('Completa todos los campos');
-      return;
-    }
     if (verified !== '1') {
       setError('Verifica tu teléfono antes de continuar');
       return;
     }
-    if (!preview) {
-      setError('Verifica el código de invitación antes de continuar');
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('Completa nombre y apellidos');
       return;
     }
-    const consentError = validateRegistrationConsent(
-      { termsAccepted, privacyAccepted },
-      duiAccepted
-    );
+    if (!licenseFront || !licenseBack) {
+      setError('Sube licencia frontal y trasera');
+      return;
+    }
+    const consentError = validateRegistrationConsent({ termsAccepted, privacyAccepted }, false);
     if (consentError) {
       setError(consentError);
       return;
     }
-    void submitRegister();
+    setError('');
+    await run(async () => {
+      const res = await registerDriverWithCode({
+        phone: phone ?? '',
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim() || undefined,
+        birthDate: birthDate.trim() || undefined,
+        code: code.trim(),
+        licenseFront,
+        licenseBack,
+      });
+      if (res.ok) {
+        showSuccess('Registro enviado', 'Un administrador revisará tu licencia antes de activarte.');
+        router.replace('/onboarding/driver');
+      } else setError(res.error ?? 'Error al registrar');
+    });
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScreenHeader title="Registro conductor" />
       <KeyboardAwareScreen scroll contentContainerStyle={styles.content}>
-        <Text style={styles.duiLabel}>Teléfono</Text>
-        <Text style={styles.duiValue}>{phone ?? ''}</Text>
-        <Text style={styles.duiHint}>{FIELD_HINTS.phone}</Text>
-        <Text style={styles.hint}>{FIELD_HINTS.inviteCode}</Text>
-        <FormInput
-          label="Código de invitación"
-          value={code}
-          onChangeText={setCode}
-          placeholder="MOVI-7F91"
-          hint={FIELD_HINTS.inviteCode}
-        />
-        <PrimaryButton title="Ver unidad" onPress={handlePreview} variant="outline" />
+        <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
 
-        {preview && (
-          <Card style={{ marginTop: spacing.lg }}>
-            <VehicleBadge type={preview.vehicle.vehicleType} />
-            <Text style={styles.label}>Unidad #{preview.vehicle.unitNumber}</Text>
-            <Text style={styles.label}>ID: {preview.vehicle.unitId}</Text>
-            <Text style={styles.label}>Placa {preview.vehicle.plateNumber}</Text>
-            <Text style={styles.label}>Dueño: {preview.owner.name}</Text>
-            <Text style={styles.label}>Asociación: {preview.vehicle.associationName}</Text>
-          </Card>
+        {step === 'code' && (
+          <>
+            <Text style={styles.hint}>Paso 1 — Ingresa el código de invitación del vehículo.</Text>
+            <FormInput
+              label="Código de invitación"
+              value={code}
+              onChangeText={setCode}
+              placeholder="MV-AB12XY"
+              hint={FIELD_HINTS.inviteCode}
+            />
+            <PrimaryButton title="Validar código" onPress={() => void handleValidateCode()} loading={loading} />
+          </>
         )}
 
-        <FormInput
-          label="Tu nombre"
-          value={name}
-          onChangeText={setName}
-          placeholder="José Pérez"
-          hint={FIELD_HINTS.fullName}
-        />
-        <Text style={styles.duiLabel}>DUI</Text>
-        <Text style={styles.duiValue}>{dui ?? ''}</Text>
-        <Text style={styles.duiHint}>{FIELD_HINTS.dui}</Text>
-        <LegalConsentCheckbox
-          termsAccepted={termsAccepted}
-          privacyAccepted={privacyAccepted}
-          onTermsChange={setTermsAccepted}
-          onPrivacyChange={setPrivacyAccepted}
-        />
-        <DuiConsentCheckbox accepted={duiAccepted} onChange={setDuiAccepted} />
-        <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
+        {step === 'preview' && preview && (
+          <>
+            <Text style={styles.section}>Vehículo asignado</Text>
+            <Card>
+              <Text style={styles.label}>
+                {preview.vehicle?.brand ?? '—'} {preview.vehicle?.model ?? ''}{' '}
+                {preview.vehicle?.year ?? ''}
+              </Text>
+              <Text style={styles.label}>Placa: {preview.vehicle?.platePartial ?? '—'}</Text>
+            </Card>
+            <Text style={styles.section}>Dueño</Text>
+            <Card>
+              <Text style={styles.label}>
+                {preview.owner?.name ??
+                  `${preview.owner?.firstName ?? ''} ${preview.owner?.lastName ?? ''}`.trim()}
+              </Text>
+            </Card>
+            <PrimaryButton title="Continuar" onPress={() => setStep('form')} style={{ marginTop: spacing.lg }} />
+            <PrimaryButton title="Cambiar código" onPress={() => setStep('code')} variant="outline" />
+          </>
+        )}
+
+        {step === 'form' && (
+          <>
+            <Text style={styles.hint}>Paso 2 — Datos personales y licencia de conducir.</Text>
+            <FormInput label="Nombres" value={firstName} onChangeText={setFirstName} placeholder="José" />
+            <FormInput label="Apellidos" value={lastName} onChangeText={setLastName} placeholder="Pérez" />
+            <Text style={styles.phoneLabel}>Teléfono</Text>
+            <Text style={styles.phoneValue}>{phone ?? ''}</Text>
+            <FormInput
+              label="Correo (opcional)"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="correo@ejemplo.com"
+            />
+            <FormInput
+              label="Fecha de nacimiento (opcional)"
+              value={birthDate}
+              onChangeText={setBirthDate}
+              placeholder="1990-05-15"
+            />
+            <Text style={styles.section}>Licencia de conducir (obligatoria)</Text>
+            <TouchableOpacity style={styles.docBtn} onPress={() => void uploadLicense('front')}>
+              <Text style={styles.docLabel}>Licencia — frontal</Text>
+              <Text style={styles.docAction}>{licenseFront ? '✓ Subida' : 'Subir'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.docBtn} onPress={() => void uploadLicense('back')}>
+              <Text style={styles.docLabel}>Licencia — trasera</Text>
+              <Text style={styles.docAction}>{licenseBack ? '✓ Subida' : 'Subir'}</Text>
+            </TouchableOpacity>
+            <LegalConsentCheckbox
+              termsAccepted={termsAccepted}
+              privacyAccepted={privacyAccepted}
+              onTermsChange={setTermsAccepted}
+              onPrivacyChange={setPrivacyAccepted}
+            />
+            <PrimaryButton title="Enviar registro" onPress={() => void handleRegister()} loading={loading} />
+          </>
+        )}
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <PrimaryButton title="Confirmar y registrarme" onPress={handleRegister} loading={loading} />
       </KeyboardAwareScreen>
     </SafeAreaView>
   );
@@ -170,10 +216,20 @@ export default function RegisterDriverCodeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg },
-  hint: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.lg },
-  label: { ...typography.body, color: colors.text, marginTop: spacing.sm },
-  error: { color: colors.danger, marginBottom: spacing.md },
-  duiLabel: { ...typography.caption, color: colors.textMuted, marginBottom: 4 },
-  duiValue: { ...typography.body, color: colors.text },
-  duiHint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md, marginTop: 4 },
+  hint: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.md },
+  section: { ...typography.subtitle, color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm },
+  label: { ...typography.body, color: colors.text, marginTop: spacing.xs },
+  error: { color: colors.danger, marginTop: spacing.md },
+  docBtn: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: colors.borderLight,
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.sm,
+  },
+  docLabel: { ...typography.body, color: colors.text },
+  docAction: { ...typography.caption, color: colors.primary },
+  phoneLabel: { ...typography.caption, color: colors.textMuted },
+  phoneValue: { ...typography.body, color: colors.text, marginBottom: spacing.md },
 });

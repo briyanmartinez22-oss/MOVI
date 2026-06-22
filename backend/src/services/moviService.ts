@@ -5,7 +5,6 @@ import { signAuthToken } from '../lib/jwt';
 import {
   duiMatches,
   generateDriverPublicId,
-  generateInviteCode,
   generateUnitId,
   namesMatch,
   normalizeDui,
@@ -19,6 +18,13 @@ import { canDriverOperate } from './subscription.service';
 import { recordDriverLocation } from './providerEligibility.service';
 import { assignUserRole } from './users.service';
 import { findUserByPhone } from './ensure-super-admin.service';
+import {
+  buildInvitePreview,
+  createVehicleInvite,
+  markInviteUsed,
+  validateVehicleInvite,
+} from './vehicle-invite.service';
+import { enrichDriverRecord } from './driver-approval.service';
 
 async function issueAuthBundle(userId: string, role: string) {
   const authToken = signAuthToken({ userId, role });
@@ -109,7 +115,14 @@ export async function registerPassenger(phone: string, fullName: string) {
   return { ok: true as const, user: authUser, ...tokens };
 }
 
-export async function registerOwner(phone: string, fullName: string, dui: string) {
+export async function registerOwner(
+  phone: string,
+  firstName: string,
+  lastName: string,
+  dui: string,
+  email?: string,
+  documentType?: 'DUI' | 'LICENSE'
+) {
   const otpCheck = await assertPhoneVerifiedForRegistration(phone);
   if (!otpCheck.ok) return otpCheck;
 
@@ -117,18 +130,25 @@ export async function registerOwner(phone: string, fullName: string, dui: string
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
   if (existing) return { ok: false as const, error: 'Este teléfono ya está registrado.' };
 
+  const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+
   const user = await prisma.user.create({
     data: {
       fullName,
       phoneNumber,
+      email: email?.trim() || null,
       duiNumber: normalizeDui(dui),
       role: 'owner',
       phoneVerified: true,
       owner: {
         create: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           name: fullName,
           phone: phoneNumber,
+          email: email?.trim() || null,
           dui: normalizeDui(dui),
+          documentType: documentType ?? 'DUI',
         },
       },
     },
@@ -252,6 +272,10 @@ export async function registerVehicle(
     maxLoadKg?: number;
     bedLengthM?: number;
     hasCargoCover?: boolean;
+    brand?: string;
+    model?: string;
+    year?: number;
+    color?: string;
   }
 ) {
   const plateCheck = await checkPlate(data.plateNumber);
@@ -277,6 +301,10 @@ export async function registerVehicle(
       maxLoadKg: data.maxLoadKg,
       bedLengthM: data.bedLengthM,
       hasCargoCover: data.hasCargoCover,
+      brand: data.brand?.trim() || null,
+      model: data.model?.trim() || null,
+      year: data.year ?? null,
+      color: data.color?.trim() || null,
     },
   });
 
@@ -296,66 +324,65 @@ export async function registerVehicle(
       maxLoadKg: vehicle.maxLoadKg ?? undefined,
       bedLengthM: vehicle.bedLengthM ?? undefined,
       hasCargoCover: vehicle.hasCargoCover ?? undefined,
+      brand: vehicle.brand ?? undefined,
+      model: vehicle.model ?? undefined,
+      year: vehicle.year ?? undefined,
+      color: vehicle.color ?? undefined,
       createdAt: vehicle.createdAt.toISOString(),
     },
   };
 }
 
-export async function inviteDriver(vehicleId: string) {
-  const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
-  if (!vehicle) return { ok: false as const, error: 'Vehículo no encontrado' };
-  if (vehicle.status !== 'approved') {
-    return { ok: false as const, error: 'La unidad debe estar aprobada.' };
+export async function inviteDriver(
+  vehicleId: string,
+  requestingOwnerId?: string,
+  actorUserId?: string
+) {
+  if (!requestingOwnerId) {
+    return { ok: false as const, error: 'Dueño no autenticado.' };
   }
-
-  const code = generateInviteCode();
-  const invite = await prisma.inviteCode.create({
-    data: { code, vehicleId, ownerId: vehicle.ownerId },
-  });
-
-  return {
-    ok: true as const,
-    invite: {
-      code: invite.code,
-      vehicleId: invite.vehicleId,
-      ownerId: invite.ownerId,
-      createdAt: invite.createdAt.toISOString(),
-    },
-  };
+  const result = await createVehicleInvite(
+    vehicleId,
+    requestingOwnerId,
+    actorUserId ?? requestingOwnerId
+  );
+  if (!result.ok) return result;
+  return { ok: true as const, invite: result.invite };
 }
 
-export async function registerDriverWithInvite(
-  phone: string,
-  dui: string,
-  fullName: string,
-  code: string
-) {
-  const otpCheck = await assertPhoneVerifiedForRegistration(phone);
+export async function validateDriverInviteCode(code: string) {
+  const check = await validateVehicleInvite(code);
+  if (!check.ok) return check;
+  return { ok: true as const, preview: buildInvitePreview(check) };
+}
+
+export async function registerDriverWithInvite(input: {
+  phone: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  birthDate?: string;
+  code: string;
+  licenseFront?: string;
+  licenseBack?: string;
+}) {
+  const otpCheck = await assertPhoneVerifiedForRegistration(input.phone);
   if (!otpCheck.ok) return otpCheck;
 
-  const phoneNumber = normalizePhone(phone);
+  if (!input.licenseFront || !input.licenseBack) {
+    return { ok: false as const, error: 'Licencia de conducir (frontal y trasera) es obligatoria.' };
+  }
+
+  const inviteCheck = await validateVehicleInvite(input.code);
+  if (!inviteCheck.ok) return inviteCheck;
+
+  const phoneNumber = normalizePhone(input.phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
   if (existing) return { ok: false as const, error: 'Este teléfono ya está registrado.' };
 
-  const invite = await prisma.inviteCode.findUnique({
-    where: { code: code.toUpperCase() },
-    include: { vehicle: true, owner: true },
-  });
-  if (!invite) return { ok: false as const, error: 'Código de invitación inválido.' };
-  if (invite.usedBy) return { ok: false as const, error: 'Este código ya fue utilizado.' };
-  if (invite.owner.status !== 'approved') {
-    return { ok: false as const, error: 'El dueño no está aprobado.' };
-  }
-  if (invite.vehicle.status !== 'approved') {
-    return { ok: false as const, error: 'La unidad no está aprobada.' };
-  }
-
-  const activeDriver = await prisma.driver.findFirst({
-    where: { vehicleId: invite.vehicleId, status: 'approved' },
-  });
-  if (activeDriver) {
-    return { ok: false as const, error: 'Esta unidad ya tiene un conductor activo.' };
-  }
+  const invite = inviteCheck.invite;
+  const fullName = `${input.firstName.trim()} ${input.lastName.trim()}`.trim();
+  const birthDate = input.birthDate ? new Date(input.birthDate) : null;
 
   const driverCount = await prisma.driver.count();
   const driverPublicId = generateDriverPublicId(driverCount);
@@ -364,7 +391,7 @@ export async function registerDriverWithInvite(
     data: {
       fullName,
       phoneNumber,
-      duiNumber: normalizeDui(dui),
+      email: input.email?.trim() || null,
       role: 'driver',
       phoneVerified: true,
       driver: {
@@ -372,46 +399,186 @@ export async function registerDriverWithInvite(
           id: driverPublicId,
           ownerId: invite.ownerId,
           vehicleId: invite.vehicleId,
+          firstName: input.firstName.trim(),
+          lastName: input.lastName.trim(),
           name: fullName,
           phone: phoneNumber,
+          email: input.email?.trim() || null,
+          birthDate,
           status: 'pending',
-          inviteCodeUsed: code.toUpperCase(),
+          source: 'INVITE',
+          vehicleInviteId: invite.id,
+          inviteCodeUsed: invite.inviteCode,
         },
       },
     },
     include: { driver: true },
   });
 
-  await createDriverSubscription(user.driver!.id);
-  await prisma.inviteCode.update({
-    where: { code: code.toUpperCase() },
-    data: { usedBy: user.driver!.id, usedAt: new Date() },
+  await prisma.verificationDocument.createMany({
+    data: [
+      {
+        driverId: user.driver!.id,
+        userId: user.id,
+        documentType: 'license_front',
+        fileUrl: input.licenseFront,
+        status: 'pending',
+      },
+      {
+        driverId: user.driver!.id,
+        userId: user.id,
+        documentType: 'license_back',
+        fileUrl: input.licenseBack,
+        status: 'pending',
+      },
+    ],
   });
+
+  await createDriverSubscription(user.driver!.id);
+  await prisma.vehicleAssignment.create({
+    data: {
+      driverId: user.driver!.id,
+      vehicleId: invite.vehicleId,
+      inviteId: invite.id,
+      isActive: true,
+    },
+  });
+  await markInviteUsed(invite.id, user.driver!.id);
 
   const authUser = toAuthUser(user);
   await assignUserRole(user.id, 'driver');
   const tokens = await issueAuthBundle(user.id, user.role);
   const driver = user.driver!;
 
-  await consumeVerifiedOtp(phone);
+  await consumeVerifiedOtp(input.phone);
 
   return {
     ok: true as const,
     user: authUser,
+    driver: enrichDriverRecord({
+      id: driver.id,
+      userId: driver.userId,
+      ownerId: driver.ownerId,
+      vehicleId: driver.vehicleId,
+      firstName: driver.firstName,
+      lastName: driver.lastName,
+      name: driver.name,
+      phone: driver.phone,
+      email: driver.email ?? undefined,
+      status: driver.status,
+      source: driver.source,
+      inviteCodeUsed: driver.inviteCodeUsed ?? undefined,
+      rating: driver.rating,
+      totalTrips: driver.totalTrips,
+      createdAt: driver.createdAt.toISOString(),
+    }),
+    ...tokens,
+  };
+}
+
+/** Owner opera su propio vehículo aprobado (misma persona = dueño + conductor). */
+export async function selfAssignOwnerAsDriver(
+  userId: string,
+  vehicleId: string,
+  license?: { licenseFront: string; licenseBack: string }
+) {
+  const owner = await prisma.owner.findUnique({ where: { userId } });
+  if (!owner) return { ok: false as const, error: 'Perfil de dueño no encontrado.' };
+  if (owner.status !== 'approved') {
+    return { ok: false as const, error: 'El dueño debe estar aprobado.' };
+  }
+
+  const vehicle = await prisma.vehicle.findFirst({
+    where: { id: vehicleId, ownerId: owner.id, deletedAt: null },
+  });
+  if (!vehicle) return { ok: false as const, error: 'Vehículo no encontrado.' };
+  if (vehicle.status !== 'approved') {
+    return { ok: false as const, error: 'La unidad debe estar aprobada.' };
+  }
+
+  const driverOnVehicle = await prisma.driver.findFirst({
+    where: { vehicleId, status: { in: ['approved', 'pending'] }, deletedAt: null },
+  });
+  if (driverOnVehicle) {
+    return { ok: false as const, error: 'Esta unidad ya tiene conductor asignado.' };
+  }
+
+  const existingDriver = await prisma.driver.findUnique({ where: { userId } });
+  if (existingDriver) {
+    return { ok: false as const, error: 'Ya tienes perfil de conductor.' };
+  }
+
+  if (!license?.licenseFront || !license?.licenseBack) {
+    return { ok: false as const, error: 'Licencia de conducir (frontal y trasera) es obligatoria.' };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return { ok: false as const, error: 'Usuario no encontrado.' };
+
+  const driverCount = await prisma.driver.count();
+  const driverPublicId = generateDriverPublicId(driverCount);
+
+  const driver = await prisma.driver.create({
+    data: {
+      id: driverPublicId,
+      userId,
+      ownerId: owner.id,
+      vehicleId,
+      firstName: owner.firstName || owner.name.split(' ')[0],
+      lastName: owner.lastName || owner.name.split(' ').slice(1).join(' '),
+      name: user.fullName,
+      phone: user.phoneNumber,
+      email: owner.email ?? user.email,
+      status: 'pending',
+      source: 'SELF_OWNER',
+      inviteCodeUsed: 'SELF_OWNER',
+    },
+  });
+
+  await prisma.verificationDocument.createMany({
+    data: [
+      {
+        driverId: driver.id,
+        userId: user.id,
+        documentType: 'license_front',
+        fileUrl: license.licenseFront,
+        status: 'pending',
+      },
+      {
+        driverId: driver.id,
+        userId: user.id,
+        documentType: 'license_back',
+        fileUrl: license.licenseBack,
+        status: 'pending',
+      },
+    ],
+  });
+
+  await createDriverSubscription(driver.id);
+  await prisma.vehicleAssignment.create({
+    data: { driverId: driver.id, vehicleId, isActive: true, notes: 'SELF_OWNER' },
+  });
+  await assignUserRole(userId, 'driver');
+
+  return {
+    ok: true as const,
     driver: {
       id: driver.id,
       userId: driver.userId,
       ownerId: driver.ownerId,
       vehicleId: driver.vehicleId,
+      firstName: driver.firstName,
+      lastName: driver.lastName,
       name: driver.name,
       phone: driver.phone,
+      email: driver.email ?? undefined,
       status: driver.status,
+      source: driver.source,
       inviteCodeUsed: driver.inviteCodeUsed ?? undefined,
       rating: driver.rating,
       totalTrips: driver.totalTrips,
       createdAt: driver.createdAt.toISOString(),
     },
-    ...tokens,
   };
 }
 
@@ -461,10 +628,14 @@ export async function submitOwnerVerification(
 
 export async function uploadVehicleDocuments(
   vehicleId: string,
-  docs: Record<string, unknown> & { registrationName?: string }
+  docs: Record<string, unknown> & { registrationName?: string },
+  requestingOwnerId?: string
 ) {
   const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
   if (!vehicle) return { ok: false as const, error: 'Vehículo no encontrado' };
+  if (requestingOwnerId && vehicle.ownerId !== requestingOwnerId) {
+    return { ok: false as const, error: 'No autorizado para esta unidad.' };
+  }
 
   const merged = { ...parseJsonField(vehicle.documentsJson, {}), ...docs };
   const updated = await prisma.vehicle.update({
@@ -494,12 +665,15 @@ export async function uploadVehicleDocuments(
   };
 }
 
-export async function submitVehicleVerification(vehicleId: string) {
+export async function submitVehicleVerification(vehicleId: string, requestingOwnerId?: string) {
   const vehicle = await prisma.vehicle.findUnique({
     where: { id: vehicleId },
     include: { owner: true },
   });
   if (!vehicle) return { ok: false as const, error: 'Vehículo no encontrado' };
+  if (requestingOwnerId && vehicle.ownerId !== requestingOwnerId) {
+    return { ok: false as const, error: 'No autorizado para esta unidad.' };
+  }
 
   const regName = vehicle.registrationName ?? '';
   if (regName && !namesMatch(vehicle.owner.name, regName)) {
@@ -549,6 +723,9 @@ export async function startDriverSession(
 
   if (!driver || driver.status !== 'approved') {
     return { ok: false as const, error: 'Conductor no aprobado.' };
+  }
+  if (driver.vehicleId !== vehicleId) {
+    return { ok: false as const, error: 'Vehículo no asignado a este conductor.' };
   }
   if (!vehicle || vehicle.status !== 'approved') {
     return { ok: false as const, error: 'Unidad no aprobada.' };
@@ -799,40 +976,9 @@ export async function updateUserProfilePhoto(userId: string, profilePhoto: strin
 }
 
 export async function getInvitePreview(code: string) {
-  const invite = await prisma.inviteCode.findUnique({
-    where: { code: code.toUpperCase() },
-    include: { vehicle: true, owner: true },
-  });
-  if (!invite || invite.usedBy) return null;
-
-  return {
-    code: {
-      code: invite.code,
-      vehicleId: invite.vehicleId,
-      ownerId: invite.ownerId,
-      createdAt: invite.createdAt.toISOString(),
-      usedBy: invite.usedBy ?? undefined,
-      usedAt: invite.usedAt?.toISOString(),
-    },
-    vehicle: {
-      vehicleId: invite.vehicle.id,
-      unitId: invite.vehicle.unitId,
-      ownerId: invite.vehicle.ownerId,
-      unitNumber: invite.vehicle.unitNumber,
-      plateNumber: invite.vehicle.plateNumber,
-      registrationName: invite.vehicle.registrationName ?? undefined,
-      associationName: invite.vehicle.associationName,
-      vehicleType: invite.vehicle.vehicleType,
-      status: invite.vehicle.status,
-      documents: parseJsonField(invite.vehicle.documentsJson, {}),
-      createdAt: invite.vehicle.createdAt.toISOString(),
-    },
-    owner: {
-      ...invite.owner,
-      documents: parseJsonField(invite.owner.documentsJson, {}),
-      createdAt: invite.owner.createdAt.toISOString(),
-    },
-  };
+  const check = await validateVehicleInvite(code);
+  if (!check.ok) return null;
+  return buildInvitePreview(check);
 }
 
 export async function getDriverSessionsList(driverId: string) {

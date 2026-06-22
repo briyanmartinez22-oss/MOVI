@@ -47,8 +47,8 @@ function ok<T>(data: T): ApiResponse<T> {
   return { ok: true, data };
 }
 
-function fail<T>(error: string): ApiResponse<T> {
-  return { ok: false, error };
+function fail<T>(error: string, code?: string): ApiResponse<T> {
+  return code ? { ok: false, error, code } : { ok: false, error };
 }
 
 async function persistAuthResponse(
@@ -112,13 +112,16 @@ export async function registerPassenger(
 
 export async function registerOwner(
   phone: string,
-  fullName: string,
-  dui: string
+  firstName: string,
+  lastName: string,
+  dui: string,
+  email?: string,
+  documentType?: 'DUI' | 'LICENSE'
 ): Promise<ApiResponse<{ user: AuthUser; owner: Owner }>> {
-  if (useMockApi()) return mock.registerOwner(phone, fullName, dui);
+  if (useMockApi()) return mock.registerOwner(phone, `${firstName} ${lastName}`, dui);
   const res = await apiPost<{ user: AuthUser; owner: Owner; authToken: string }>(
     '/owners/register',
-    { phone, fullName, dui },
+    { phone, firstName, lastName, dui, email, documentType },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar');
@@ -161,6 +164,10 @@ export async function registerVehicle(
     maxLoadKg?: number;
     bedLengthM?: number;
     hasCargoCover?: boolean;
+    brand?: string;
+    model?: string;
+    year?: number;
+    color?: string;
   }
 ): Promise<ApiResponse<Vehicle>> {
   if (useMockApi()) return mock.registerVehicle(ownerId, data);
@@ -201,16 +208,127 @@ export async function inviteDriver(vehicleId: string): Promise<ApiResponse<Invit
   return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al generar invitación');
 }
 
-export async function registerDriverWithInvite(
-  phone: string,
-  dui: string,
-  fullName: string,
-  code: string
-): Promise<ApiResponse<{ user: AuthUser; driver: DriverProfileRecord }>> {
-  if (useMockApi()) return mock.registerDriverWithInvite(phone, dui, fullName, code);
+export type VehicleInviteRecord = {
+  id: string;
+  vehicleId: string;
+  ownerId: string;
+  code: string;
+  inviteCode: string;
+  status: string;
+  expiresAt: string;
+  maxUses: number;
+  currentUses: number;
+  usedCount: number;
+  createdAt: string;
+  updatedAt?: string;
+  revokedAt?: string | null;
+  vehicle?: {
+    vehicleId: string;
+    unitNumber: string;
+    plateNumber: string;
+    brand?: string | null;
+    model?: string | null;
+    year?: number | null;
+  };
+  owner?: { id: string; name: string };
+};
+
+export async function fetchOwnerVehicleInvites(vehicleId?: string) {
+  if (useMockApi()) return [];
+  const query = vehicleId ? `?vehicleId=${encodeURIComponent(vehicleId)}` : '';
+  const res = await apiGet<{ invites: VehicleInviteRecord[] }>(`/owners/me/vehicle-invites${query}`);
+  return res.ok ? res.data?.invites ?? [] : [];
+}
+
+export async function cancelOwnerVehicleInvite(
+  inviteId: string
+): Promise<ApiResponse<VehicleInviteRecord>> {
+  if (useMockApi()) return fail<VehicleInviteRecord>('No disponible en mock');
+  const res = await apiPost<VehicleInviteRecord>(`/owners/me/vehicle-invites/${inviteId}/cancel`);
+  return res.ok ? ok(res.data!) : fail<VehicleInviteRecord>(res.error ?? 'Error al cancelar invitación');
+}
+
+export async function regenerateOwnerVehicleInvite(
+  inviteId: string
+): Promise<ApiResponse<VehicleInviteRecord>> {
+  if (useMockApi()) return fail<VehicleInviteRecord>('No disponible en mock');
+  const res = await apiPost<VehicleInviteRecord>(
+    `/owners/me/vehicle-invites/${inviteId}/regenerate`
+  );
+  return res.ok ? ok(res.data!) : fail<VehicleInviteRecord>(res.error ?? 'Error al regenerar invitación');
+}
+
+export async function fetchAdminVehicleInvites() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ invites: VehicleInviteRecord[] }>('/admin/vehicle-invites');
+  return res.ok ? res.data?.invites ?? [] : [];
+}
+
+export async function revokeAdminVehicleInvite(
+  inviteId: string
+): Promise<ApiResponse<VehicleInviteRecord>> {
+  if (useMockApi()) return fail<VehicleInviteRecord>('No disponible en mock');
+  const res = await apiPost<VehicleInviteRecord>(`/admin/vehicle-invites/${inviteId}/revoke`);
+  return res.ok ? ok(res.data!) : fail<VehicleInviteRecord>(res.error ?? 'Error al revocar invitación');
+}
+
+export async function cancelAdminVehicleInvite(
+  inviteId: string
+): Promise<ApiResponse<VehicleInviteRecord>> {
+  if (useMockApi()) return fail<VehicleInviteRecord>('No disponible en mock');
+  const res = await apiPost<VehicleInviteRecord>(`/admin/vehicle-invites/${inviteId}/cancel`);
+  return res.ok ? ok(res.data!) : fail<VehicleInviteRecord>(res.error ?? 'Error al cancelar invitación');
+}
+
+export async function extendAdminVehicleInvite(
+  inviteId: string
+): Promise<ApiResponse<VehicleInviteRecord>> {
+  if (useMockApi()) return fail<VehicleInviteRecord>('No disponible en mock');
+  const res = await apiPost<VehicleInviteRecord>(`/admin/vehicle-invites/${inviteId}/extend`);
+  return res.ok ? ok(res.data!) : fail<VehicleInviteRecord>(res.error ?? 'Error al extender invitación');
+}
+
+export async function regenerateAdminVehicleInvite(
+  inviteId: string
+): Promise<ApiResponse<VehicleInviteRecord>> {
+  if (useMockApi()) return fail<VehicleInviteRecord>('No disponible en mock');
+  const res = await apiPost<VehicleInviteRecord>(`/admin/vehicle-invites/${inviteId}/regenerate`);
+  return res.ok ? ok(res.data!) : fail<VehicleInviteRecord>(res.error ?? 'Error al regenerar invitación');
+}
+
+export async function validateDriverInviteCode(code: string) {
+  if (useMockApi()) {
+    const preview = await fetchInvitePreview(code);
+    return preview ? ok(preview) : fail('Código inválido', 'INVITE_INVALID');
+  }
+  const res = await apiPost<Record<string, unknown>>('/drivers/invites/validate', { code }, {
+    auth: false,
+  });
+  if (res.ok) return ok(res.data ?? {});
+  return fail(res.error ?? 'Código inválido', res.code);
+}
+
+export async function registerDriverWithInvite(input: {
+  phone: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  birthDate?: string;
+  code: string;
+  licenseFront: string;
+  licenseBack: string;
+}): Promise<ApiResponse<{ user: AuthUser; driver: DriverProfileRecord }>> {
+  if (useMockApi()) {
+    return mock.registerDriverWithInvite(
+      input.phone,
+      '',
+      `${input.firstName} ${input.lastName}`,
+      input.code
+    );
+  }
   const res = await apiPost<{ user: AuthUser; driver: DriverProfileRecord; authToken: string }>(
     '/drivers/register-with-invite',
-    { phone, dui, fullName, code },
+    input,
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar conductor');
@@ -455,6 +573,36 @@ export async function fetchAdminSystemStatus() {
   if (useMockApi()) return null;
   const res = await apiGet<Record<string, unknown>>('/admin/system/status');
   return res.ok ? res.data ?? null : null;
+}
+
+export async function fetchAdminDataSummary() {
+  if (useMockApi()) return null;
+  const res = await apiGet<Record<string, number>>('/admin/system/data-summary');
+  return res.ok ? res.data ?? null : null;
+}
+
+export async function adminResetBetaPlatform(): Promise<ApiResponse<Record<string, unknown>>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Record<string, unknown>>('/admin/system/reset-beta', {
+    confirm: 'RESET_BETA_PLATFORM',
+  });
+  return res.ok ? ok(res.data ?? {}) : fail(res.error ?? 'Error al limpiar plataforma');
+}
+
+export async function selfAssignOwnerAsDriver(
+  vehicleId: string,
+  licenseFront: string,
+  licenseBack: string
+): Promise<ApiResponse<DriverProfileRecord>> {
+  if (useMockApi()) return fail('Usa invitación en modo demo');
+  const res = await apiPost<{ driver: DriverProfileRecord }>('/owners/me/self-assign-driver', {
+    vehicleId,
+    licenseFront,
+    licenseBack,
+  });
+  if (!res.ok || !res.data) return fail(res.error ?? 'No se pudo asignar');
+  setProfileCache({ driver: res.data.driver });
+  return ok(res.data.driver);
 }
 
 export async function fetchIntegrationsStatus() {

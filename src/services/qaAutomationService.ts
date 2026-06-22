@@ -286,7 +286,12 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
     await track('register-dui-formats', 'Registro dueño/negocio con DUI numérico', async () => {
       const ownerPhone = qaPhone('21');
       const ownerDuiDigits = '099988877';
-      const ownerReg = await mockApi.registerOwner(ownerPhone, 'QA Dueño Formato', ownerDuiDigits);
+      const ownerReg = await mockApi.registerOwner(
+        ownerPhone,
+        'QA',
+        'Dueño Formato',
+        ownerDuiDigits
+      );
       assert(ownerReg.ok, ownerReg.error ?? 'Registro dueño numérico falló');
       assert(
         normalizeDuiDigits(ownerReg.data!.owner.dui) === ownerDuiDigits,
@@ -371,7 +376,7 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
     await track('register-owner', 'Registro dueño', async () => {
       const phone = qaPhone('02');
       const dui = qaDui('2');
-      const res = await mockApi.registerOwner(phone, 'QA Dueño', dui);
+      const res = await mockApi.registerOwner(phone, 'QA', 'Dueño', dui);
       assert(res.ok, res.error ?? 'Registro dueño falló');
       const docs = await mockApi.uploadOwnerDocuments(res.data!.owner.id, {
         duiFront: 'mock://qa-dui-front',
@@ -435,12 +440,14 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
       const phone = qaPhone('03');
       const dui = qaDui('3');
       assert(!!qaInviteCode, 'Código de invitación QA no generado');
-      const res = await mockApi.registerDriverWithInvite(
+      const res = await mockApi.registerDriverWithInvite({
         phone,
-        dui,
-        'QA Conductor',
-        qaInviteCode!
-      );
+        firstName: 'QA',
+        lastName: 'Conductor',
+        code: qaInviteCode!,
+        licenseFront: 'mock://qa-license-front',
+        licenseBack: 'mock://qa-license-back',
+      });
       assert(res.ok, res.error ?? 'Registro conductor falló');
       return res.data!.driver.name;
     });

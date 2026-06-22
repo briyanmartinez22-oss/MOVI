@@ -3,6 +3,9 @@
  * QA — trip ratings (bidirectional + validation)
  * Usage: npm run qa:ratings
  */
+import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+import { loginAsSuperAdmin } from './admin-qa-auth';
+
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
 
@@ -39,15 +42,14 @@ function record(step: string, ok: boolean, detail?: string) {
 async function run() {
   console.log('MOVI Ratings QA —', API, '\n');
 
-  const adminToken = await loginAs('70801111', '00000000-0');
+  const adminToken = await loginAsSuperAdmin();
   const ownerPhone = `71${String(Date.now() + 1).slice(-6)}`;
   await req('/auth/request-otp', { phone: ownerPhone });
   await req('/auth/verify-otp', { phone: ownerPhone, code: OTP });
-  const ownerReg = await req('/owners/register', {
-    phone: ownerPhone,
-    dui: '55555555-5',
-    fullName: 'QA Ratings Owner',
-  });
+  const ownerReg = await req(
+    '/owners/register',
+    ownerRegisterPayload(ownerPhone, '55555555-5', 'QA', 'Ratings Owner')
+  );
   const ownerToken = ownerReg.json.data?.authToken as string;
   const ownerId = ownerReg.json.data?.owner?.id as string;
 
@@ -74,12 +76,10 @@ async function run() {
   const driverPhone = `72${String(Date.now() + 2).slice(-6)}`;
   await req('/auth/request-otp', { phone: driverPhone });
   await req('/auth/verify-otp', { phone: driverPhone, code: OTP });
-  const driverReg = await req('/drivers/register-with-invite', {
-    phone: driverPhone,
-    dui: '66666666-6',
-    fullName: 'QA Ratings Driver',
-    code: inviteCode,
-  });
+  const driverReg = await req(
+    '/drivers/register-with-invite',
+    driverInviteRegisterPayload(driverPhone, inviteCode, 'QA', 'Ratings Driver')
+  );
   const driverId = driverReg.json.data?.driver?.id as string;
   const driverToken = driverReg.json.data?.authToken as string;
   await req(`/admin/drivers/${driverId}/approve`, {}, adminToken);

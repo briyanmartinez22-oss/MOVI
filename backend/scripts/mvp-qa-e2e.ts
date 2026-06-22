@@ -3,6 +3,9 @@
  * MOVI MVP QA — 10-step end-to-end validation
  * Usage: npx tsx scripts/mvp-qa-e2e.ts
  */
+import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+import { loginAsSuperAdmin } from './admin-qa-auth';
+
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
 
@@ -57,17 +60,17 @@ async function run() {
     phone: newPassengerPhone,
     fullName: 'QA Pasajero MVP',
   });
+  const passengerToken = regPass.json.data?.authToken as string;
   record('1. Registro pasajero', regPass.json.ok === true, regPass.json.error);
 
   // 2. Registro proveedor (owner + vehicle + driver pending)
   const newOwnerPhone = `71${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone: newOwnerPhone });
   await req('/auth/verify-otp', { phone: newOwnerPhone, code: OTP });
-  const regOwner = await req('/owners/register', {
-    phone: newOwnerPhone,
-    dui: '22222222-2',
-    fullName: 'QA Dueño MVP',
-  });
+  const regOwner = await req(
+    '/owners/register',
+    ownerRegisterPayload(newOwnerPhone, '22222222-2', 'QA', 'Dueño MVP')
+  );
   const ownerId = regOwner.json.data?.owner?.id as string;
   record('2. Registro proveedor (dueño)', regOwner.json.ok === true, regOwner.json.error);
 
@@ -90,7 +93,7 @@ async function run() {
   await req('/owners/upload-documents', { duiFront: 'https://example.com/dui.jpg' }, ownerToken);
   await req('/owners/submit-verification', {}, ownerToken);
 
-  const adminToken = await loginAs('70801111', '00000000-0');
+  const adminToken = await loginAsSuperAdmin();
   const approveOwnerPre = await req(`/admin/owners/${ownerId}/approve`, {}, adminToken);
   const approveVehiclePre = await req(`/admin/vehicles/${vehicleId}/approve`, {}, adminToken);
   record('2a. Aprobación dueño/vehículo (pre-invitación)', approveOwnerPre.json.ok && approveVehiclePre.json.ok);
@@ -101,12 +104,10 @@ async function run() {
   const newDriverPhone = `72${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone: newDriverPhone });
   await req('/auth/verify-otp', { phone: newDriverPhone, code: OTP });
-  const regDriver = await req('/drivers/register-with-invite', {
-    phone: newDriverPhone,
-    dui: '33333333-3',
-    fullName: 'QA Conductor MVP',
-    code: inviteCode,
-  });
+  const regDriver = await req(
+    '/drivers/register-with-invite',
+    driverInviteRegisterPayload(newDriverPhone, inviteCode, 'QA', 'Conductor MVP')
+  );
   const driverId = regDriver.json.data?.driver?.id as string;
   const driverStatus = regDriver.json.data?.driver?.status;
   record('2c. Registro conductor (pending)', regDriver.json.ok && driverStatus === 'pending', regDriver.json.error ?? `status=${driverStatus}`);
@@ -133,7 +134,6 @@ async function run() {
   record('4. Proveedor online (sesión)', session.json.ok === true, session.json.error);
 
   // 5. Solicitud servicio
-  const passengerToken = await loginAs('78214898', '71542253-8');
   const tripReq = await req(
     '/trips/request',
     {

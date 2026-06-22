@@ -12,7 +12,6 @@ export default function WelcomeScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <MoviLogo size="lg" />
-        <Text style={styles.brandName}>MOVI</Text>
         <Text style={styles.tagline}>
           La plataforma de movilidad, entregas y logística de El Salvador
         </Text>
@@ -57,14 +56,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  brandName: {
-    ...typography.title,
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: 2,
-    marginTop: spacing.sm,
   },
   tagline: {
     ...typography.body,

@@ -15,12 +15,12 @@ import type { AdminDriverRecord } from '../../src/types/adminUsers';
 
 function driverActions(d: AdminDriverRecord): EntityAction[] {
   const actions: EntityAction[] = [];
-  if (d.mvpStatus !== 'VERIFIED' && d.mvpStatus !== 'SUSPENDED') {
+  if (d.mvpStatus === 'PENDING_APPROVAL' || d.mvpStatus === 'PENDING_REVIEW') {
     actions.push('approve', 'reject');
   }
   if (d.mvpStatus === 'SUSPENDED') {
     actions.push('reactivate');
-  } else {
+  } else if (d.mvpStatus === 'VERIFIED') {
     actions.push('suspend');
   }
   actions.push('delete');

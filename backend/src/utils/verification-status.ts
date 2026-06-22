@@ -2,6 +2,7 @@
 export type MvpVerificationStatus =
   | 'PENDING_DOCUMENTS'
   | 'PENDING_REVIEW'
+  | 'PENDING_APPROVAL'
   | 'VERIFIED'
   | 'REJECTED'
   | 'SUSPENDED';
@@ -26,7 +27,7 @@ const VEHICLE_MAP: Record<string, MvpVerificationStatus> = {
 };
 
 const DRIVER_MAP: Record<string, MvpVerificationStatus> = {
-  pending: 'PENDING_REVIEW',
+  pending: 'PENDING_APPROVAL',
   approved: 'VERIFIED',
   rejected: 'REJECTED',
   suspended: 'SUSPENDED',

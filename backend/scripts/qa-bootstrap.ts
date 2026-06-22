@@ -2,6 +2,7 @@
  * Crea entidades efímeras para scripts QA (post db:reset-beta).
  */
 import { req, OTP } from './admin-qa-auth';
+import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
 
 function place(name: string, lat: number, lng: number) {
   return {
@@ -28,11 +29,10 @@ export async function registerOwner(fullName = 'QA Bootstrap Owner') {
   const phone = `71${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone });
   await req('/auth/verify-otp', { phone, code: OTP });
-  const reg = await req('/owners/register', {
-    phone,
-    dui: `${String(Date.now()).slice(-8)}-1`,
-    fullName,
-  });
+  const reg = await req(
+    '/owners/register',
+    ownerRegisterPayload(phone, `${String(Date.now()).slice(-8)}-1`, 'QA', fullName.replace(/^QA\s+/, ''))
+  );
   if (!reg.json.ok) throw new Error(reg.json.error ?? 'owner register failed');
   return {
     id: reg.json.data?.owner?.id as string,
@@ -90,12 +90,10 @@ export async function registerDriverWithVehicle(adminToken: string) {
   const dPhone = `78${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone: dPhone });
   await req('/auth/verify-otp', { phone: dPhone, code: OTP });
-  const dReg = await req('/drivers/register-with-invite', {
-    phone: dPhone,
-    dui: `${String(Date.now()).slice(-8)}-3`,
-    fullName: 'QA Bootstrap Driver',
-    code,
-  });
+  const dReg = await req(
+    '/drivers/register-with-invite',
+    driverInviteRegisterPayload(dPhone, code, 'QA', 'Bootstrap Driver')
+  );
   if (!dReg.json.ok) throw new Error(dReg.json.error ?? 'driver register failed');
   const driverId = dReg.json.data?.driver?.id as string;
   const driverToken = dReg.json.data?.authToken as string;

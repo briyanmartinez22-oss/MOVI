@@ -3,6 +3,8 @@
  * QA — OTP / Twilio Verify readiness
  * Usage: npm run qa:otp
  */
+import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
 
@@ -78,11 +80,10 @@ async function run() {
     blockedPassenger.json.error ?? blockedPassenger.json.data?.error
   );
 
-  const blockedOwner = await req('/owners/register', {
-    phone: uniquePhone('71'),
-    dui: '22222222-2',
-    fullName: 'QA OTP Blocked Owner',
-  });
+  const blockedOwner = await req(
+    '/owners/register',
+    ownerRegisterPayload(uniquePhone('71'), '22222222-2', 'QA', 'OTP Blocked Owner')
+  );
   record(
     'registro dueño bloqueado sin OTP',
     blockedOwner.status === 400 || blockedOwner.json.ok === false,
@@ -102,11 +103,10 @@ async function run() {
   const ownerPhone = uniquePhone('78');
   await req('/auth/request-otp', { phone: ownerPhone });
   await req('/auth/verify-otp', { phone: ownerPhone, code: OTP });
-  const allowedOwner = await req('/owners/register', {
-    phone: ownerPhone,
-    dui: `${String(Date.now()).slice(-8)}-2`,
-    fullName: 'QA OTP Allowed Owner',
-  });
+  const allowedOwner = await req(
+    '/owners/register',
+    ownerRegisterPayload(ownerPhone, `${String(Date.now()).slice(-8)}-2`, 'QA', 'OTP Allowed Owner')
+  );
   record(
     'registro dueño permitido con OTP verificado',
     allowedOwner.json.ok === true,

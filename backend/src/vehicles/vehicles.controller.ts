@@ -55,6 +55,10 @@ export class VehiclesController {
         maxLoadKg: z.number().optional(),
         bedLengthM: z.number().optional(),
         hasCargoCover: z.boolean().optional(),
+        brand: z.string().optional(),
+        model: z.string().optional(),
+        year: z.number().int().optional(),
+        color: z.string().optional(),
       })
       .safeParse(body);
     if (!parsed.success) {
@@ -71,9 +75,18 @@ export class VehiclesController {
   @Post(':vehicleId/upload-documents')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(AnyFilesInterceptor())
-  async uploadDocuments(@Param('vehicleId') vehicleId: string, @Req() req: Request) {
+  async uploadDocuments(
+    @AuthUser() auth: AuthPayload,
+    @Param('vehicleId') vehicleId: string,
+    @Req() req: Request
+  ) {
+    const owner = await prisma.owner.findUnique({ where: { userId: auth.userId } });
+    if (!owner) {
+      throw new HttpException('Dueño no encontrado', HttpStatus.NOT_FOUND);
+    }
+
     const docs = await parseMultipartOrJsonDocs(req);
-    const result = await uploadVehicleDocuments(vehicleId, docs);
+    const result = await uploadVehicleDocuments(vehicleId, docs, owner.id);
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Error al subir documentos', HttpStatus.BAD_REQUEST);
     }
@@ -82,8 +95,13 @@ export class VehiclesController {
 
   @Post(':vehicleId/submit-verification')
   @UseGuards(JwtAuthGuard)
-  async submitVerification(@Param('vehicleId') vehicleId: string) {
-    const result = await submitVehicleVerification(vehicleId);
+  async submitVerification(@AuthUser() auth: AuthPayload, @Param('vehicleId') vehicleId: string) {
+    const owner = await prisma.owner.findUnique({ where: { userId: auth.userId } });
+    if (!owner) {
+      throw new HttpException('Dueño no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    const result = await submitVehicleVerification(vehicleId, owner.id);
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Error de verificación', HttpStatus.BAD_REQUEST);
     }
@@ -92,8 +110,13 @@ export class VehiclesController {
 
   @Post(':vehicleId/invite-driver')
   @UseGuards(JwtAuthGuard)
-  async inviteDriver(@Param('vehicleId') vehicleId: string) {
-    const result = await inviteDriver(vehicleId);
+  async inviteDriver(@AuthUser() auth: AuthPayload, @Param('vehicleId') vehicleId: string) {
+    const owner = await prisma.owner.findUnique({ where: { userId: auth.userId } });
+    if (!owner) {
+      throw new HttpException('Dueño no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    const result = await inviteDriver(vehicleId, owner.id, auth.userId);
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Error al invitar conductor', HttpStatus.BAD_REQUEST);
     }

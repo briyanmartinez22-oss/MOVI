@@ -24,6 +24,7 @@ enum OwnerVerificationStatus {
   approved
   rejected
   suspended
+  deleted
 }
 
 enum VehicleVerificationStatus {
@@ -33,6 +34,7 @@ enum VehicleVerificationStatus {
   approved
   rejected
   suspended
+  deleted
 }
 
 enum DriverVerificationStatus {
@@ -40,6 +42,24 @@ enum DriverVerificationStatus {
   approved
   rejected
   suspended
+  deleted
+}
+
+enum OwnerDocumentType {
+  DUI
+  LICENSE
+}
+
+enum DriverSource {
+  INVITE
+  SELF_OWNER
+}
+
+enum VehicleInviteStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  REVOKED
 }
 
 enum AccountStatus {
@@ -195,6 +215,8 @@ enum AuditAction {
   approve
   reject
   cancel
+  revoke
+  regenerate
   dispatch
   reassign
   suspend
@@ -212,6 +234,7 @@ model User {
   fullName      String
   phoneNumber   String        @unique
   duiNumber     String?
+  email         String?
   role          UserRole
   accountStatus AccountStatus @default(active)
   phoneVerified Boolean       @default(false)
@@ -280,19 +303,26 @@ model OtpChallenge {
 model Owner {
   id                  String                  @id @default(cuid())
   userId              String                  @unique
+  firstName           String                  @default("")
+  lastName            String                  @default("")
   name                String
   phone               String
+  email               String?
   dui                 String
+  documentType        OwnerDocumentType       @default(DUI)
   status              OwnerVerificationStatus @default(pending)
   documentsJson       String                  @default("{}")
   specialCase         String?
   ownershipProofImage String?
+  deletedAt           DateTime?
+  deletedBy           String?
+  deleteReason        String?
   createdAt           DateTime                @default(now())
 
   user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicles           Vehicle[]
   drivers            Driver[]
-  invites            InviteCode[]
+  vehicleInvites     VehicleInvite[]
   verificationDocs   VerificationDocument[]
 }
 
@@ -318,12 +348,15 @@ model Vehicle {
   cargoCapacity    Float?
   photosJson       String                    @default("[]")
   registrationCard String?
+  deletedAt        DateTime?
+  deletedBy        String?
+  deleteReason     String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
   owner              Owner                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   driver             Driver?
-  invites            InviteCode[]
+  vehicleInvites     VehicleInvite[]
   sessions           DriverSession[]
   assignments        VehicleAssignment[]
   tripOffers         TripOffer[]
@@ -334,35 +367,48 @@ model VehicleAssignment {
   id           String    @id @default(cuid())
   driverId     String
   vehicleId    String
+  inviteId     String?
   isActive     Boolean   @default(true)
   assignedAt   DateTime  @default(now())
   unassignedAt DateTime?
   notes        String?
 
-  driver  Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver  Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  invite  VehicleInvite? @relation(fields: [inviteId], references: [id], onDelete: SetNull)
 
   @@index([driverId])
   @@index([vehicleId])
   @@index([isActive])
+  @@index([inviteId])
 }
 
 model Driver {
-  id             String                   @id
-  userId         String                   @unique
-  ownerId        String
-  vehicleId      String                   @unique
-  name           String
-  phone          String
-  status         DriverVerificationStatus @default(pending)
-  inviteCodeUsed String?
-  rating         Float                    @default(5)
-  totalTrips     Int                      @default(0)
-  createdAt      DateTime                 @default(now())
+  id               String                   @id
+  userId           String                   @unique
+  ownerId          String
+  vehicleId        String                   @unique
+  firstName        String                   @default("")
+  lastName         String                   @default("")
+  name             String
+  phone            String
+  email            String?
+  birthDate        DateTime?
+  status           DriverVerificationStatus @default(pending)
+  source           DriverSource             @default(INVITE)
+  vehicleInviteId  String?
+  inviteCodeUsed   String?
+  rating           Float                    @default(5)
+  totalTrips       Int                      @default(0)
+  deletedAt        DateTime?
+  deletedBy        String?
+  deleteReason     String?
+  createdAt        DateTime                 @default(now())
 
   user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   owner              Owner                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   vehicle            Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicleInvite      VehicleInvite?         @relation(fields: [vehicleInviteId], references: [id], onDelete: SetNull)
   subscription       DriverSubscription?
   sessions           DriverSession[]
   vehicleAssignments VehicleAssignment[]
@@ -436,16 +482,30 @@ model DriverSubscription {
   driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
 }
 
-model InviteCode {
-  code      String    @id
-  vehicleId String
-  ownerId   String
-  createdAt DateTime  @default(now())
-  usedBy    String?
-  usedAt    DateTime?
+model VehicleInvite {
+  id             String              @id @default(cuid())
+  vehicleId      String
+  ownerId        String
+  inviteCode     String              @unique
+  status         VehicleInviteStatus @default(ACTIVE)
+  expiresAt      DateTime
+  maxUses        Int                 @default(1)
+  currentUses    Int                 @default(0)
+  createdBy      String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  revokedAt      DateTime?
+  usedByDriverId String?
 
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  owner   Owner   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  owner       Owner               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  drivers     Driver[]
+  assignments VehicleAssignment[]
+
+  @@index([vehicleId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([expiresAt])
 }
 
 model DriverSession {

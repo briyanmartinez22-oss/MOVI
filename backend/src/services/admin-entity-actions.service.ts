@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { revokeAllRefreshTokensForUser } from '../lib/refreshToken';
 import { normalizePhone } from '../utils/phone';
 import { mapDriverMvpStatus, mapOwnerMvpStatus } from '../utils/verification-status';
+import { mapDriverApprovalStatus } from './driver-approval.service';
 import { writeAdminAudit } from './audit.service';
 
 type AdminContext = {
@@ -235,6 +236,7 @@ function serializeDriver(driver: {
     name: driver.name,
     phone: driver.phone,
     status: driver.status,
+    approvalStatus: mapDriverApprovalStatus(driver.status),
     mvpStatus: mapDriverMvpStatus(driver.status as never),
     rating: driver.rating,
     totalTrips: driver.totalTrips,
@@ -340,6 +342,14 @@ export async function deleteAdminDriver(driverId: string, ctx: AdminContext) {
   const driver = await prisma.driver.findUnique({ where: { id: driverId } });
   if (!driver) return { ok: false as const, error: 'Conductor no encontrado' };
 
+  const tripCount = await prisma.trip.count({ where: { driverId } });
+  if (tripCount > 0) {
+    return {
+      ok: false as const,
+      error: 'No se puede eliminar un conductor con viajes. Suspende o usa soft delete.',
+    };
+  }
+
   await audit(ctx, {
     action: 'delete',
     entityType: 'driver',
@@ -348,8 +358,15 @@ export async function deleteAdminDriver(driverId: string, ctx: AdminContext) {
   });
 
   await revokeAllRefreshTokensForUser(driver.userId);
-  await prisma.user.delete({ where: { id: driver.userId } });
-  return { ok: true as const, data: { deleted: true, id: driverId } };
+  await prisma.driver.update({
+    where: { id: driverId },
+    data: {
+      status: 'deleted',
+      deletedAt: new Date(),
+      deletedBy: ctx.adminUserId,
+    },
+  });
+  return { ok: true as const, data: { deleted: true, id: driverId, soft: true } };
 }
 
 function serializeOwner(owner: {
@@ -461,6 +478,20 @@ export async function deleteAdminOwner(ownerId: string, ctx: AdminContext) {
   const owner = await prisma.owner.findUnique({ where: { id: ownerId } });
   if (!owner) return { ok: false as const, error: 'Propietario no encontrado' };
 
+  const activeVehicles = await prisma.vehicle.count({
+    where: {
+      ownerId,
+      deletedAt: null,
+      status: { in: ['approved', 'under_review', 'documents_uploaded'] },
+    },
+  });
+  if (activeVehicles > 0) {
+    return {
+      ok: false as const,
+      error: 'No se puede eliminar un dueño con vehículos activos. Suspende o usa soft delete.',
+    };
+  }
+
   await audit(ctx, {
     action: 'delete',
     entityType: 'owner',
@@ -469,8 +500,15 @@ export async function deleteAdminOwner(ownerId: string, ctx: AdminContext) {
   });
 
   await revokeAllRefreshTokensForUser(owner.userId);
-  await prisma.user.delete({ where: { id: owner.userId } });
-  return { ok: true as const, data: { deleted: true, id: ownerId } };
+  await prisma.owner.update({
+    where: { id: ownerId },
+    data: {
+      status: 'deleted',
+      deletedAt: new Date(),
+      deletedBy: ctx.adminUserId,
+    },
+  });
+  return { ok: true as const, data: { deleted: true, id: ownerId, soft: true } };
 }
 
 function serializeBusiness(business: {

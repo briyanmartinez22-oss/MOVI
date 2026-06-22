@@ -213,6 +213,7 @@ export const SUPER_ADMIN_SIDEBAR: AdminMenuItem[] = [
   { title: 'Passengers', route: '/admin/passengers', icon: 'people', permission: 'passengers.view', roles: OPS },
   { title: 'Drivers', route: '/admin/drivers', icon: 'person', permission: 'drivers.view', roles: OPS },
   { title: 'Owners', route: '/admin/owners', icon: 'business', permission: 'owners.view', roles: COMPLIANCE },
+  { title: 'Invitaciones', route: '/admin/vehicle-invites', icon: 'key', permission: 'owners.fleet', roles: COMPLIANCE },
   { title: 'Businesses', route: '/admin/businesses', icon: 'storefront', permission: 'businesses.view', roles: OPS },
   { title: 'Deliveries', route: '/admin/deliveries', icon: 'cube', permission: 'deliveries.reassign', roles: OPS },
   { title: 'Finance', route: '/admin/finance', icon: 'cash', permission: 'finance.transactions', roles: FINANCE },

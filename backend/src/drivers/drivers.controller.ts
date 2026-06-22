@@ -10,18 +10,46 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { AuthUser } from '../common/decorators/auth-user.decorator';
+import { AdminStaffRoles } from '../common/decorators/admin-staff.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { AuthPayload } from '../common/guards/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { AdminStaffGuard } from '../common/guards/admin-staff.guard';
 import {
+  cancelVehicleInvite,
+  extendVehicleInvite,
+  listAllVehicleInvitesAdmin,
+  regenerateVehicleInvite,
+  revokeVehicleInvite,
+} from '../services/vehicle-invite.service';
+import {
+  getInvitePreview,
+  validateDriverInviteCode,
+  registerDriverWithInvite,
   endDriverSession,
   getDriverSessionsList,
-  getInvitePreview,
-  registerDriverWithInvite,
   startDriverSession,
 } from '../services/moviService';
 
 @Controller('drivers')
 export class DriversController {
+  @Post('invites/validate')
+  async validateInvite(@Body() body: unknown) {
+    const parsed = z.object({ code: z.string().min(4) }).safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException('Código requerido', HttpStatus.BAD_REQUEST);
+    }
+    const result = await validateDriverInviteCode(parsed.data.code);
+    if (!result.ok) {
+      throw new HttpException(
+        { message: result.error ?? 'Código inválido', code: result.code },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    return result.preview;
+  }
+
   @Get('invites/:code/preview')
   async invitePreview(@Param('code') code: string) {
     const preview = await getInvitePreview(code);
@@ -36,21 +64,29 @@ export class DriversController {
     const parsed = z
       .object({
         phone: z.string().min(8),
-        dui: z.string().min(5),
-        fullName: z.string().min(2),
+        firstName: z.string().min(1),
+        lastName: z.string().min(1),
+        email: z.string().email().optional().or(z.literal('')),
+        birthDate: z.string().optional(),
         code: z.string().min(4),
+        licenseFront: z.string().min(1),
+        licenseBack: z.string().min(1),
       })
       .safeParse(body);
     if (!parsed.success) {
       throw new HttpException('Datos de registro inválidos', HttpStatus.BAD_REQUEST);
     }
 
-    const result = await registerDriverWithInvite(
-      parsed.data.phone,
-      parsed.data.dui,
-      parsed.data.fullName,
-      parsed.data.code
-    );
+    const result = await registerDriverWithInvite({
+      phone: parsed.data.phone,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      email: parsed.data.email || undefined,
+      birthDate: parsed.data.birthDate,
+      code: parsed.data.code,
+      licenseFront: parsed.data.licenseFront,
+      licenseBack: parsed.data.licenseBack,
+    });
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Registro fallido', HttpStatus.BAD_REQUEST);
     }
@@ -119,5 +155,44 @@ export class DriversController {
   async listSessions(@Param('driverId') driverId: string) {
     const sessions = await getDriverSessionsList(driverId);
     return sessions;
+  }
+}
+
+@Controller('admin/vehicle-invites')
+@UseGuards(JwtAuthGuard, RolesGuard, AdminStaffGuard)
+@Roles('admin')
+@AdminStaffRoles('SUPER_ADMIN', 'OPS_ADMIN', 'COMPLIANCE_ADMIN')
+export class AdminVehicleInvitesController {
+  @Get()
+  async list() {
+    return { invites: await listAllVehicleInvitesAdmin() };
+  }
+
+  @Post(':inviteId/revoke')
+  async revoke(@AuthUser() auth: AuthPayload, @Param('inviteId') inviteId: string) {
+    const result = await revokeVehicleInvite(inviteId, auth.userId);
+    if (!result.ok) throw new HttpException(result.error ?? 'Error', HttpStatus.BAD_REQUEST);
+    return result.invite;
+  }
+
+  @Post(':inviteId/cancel')
+  async cancel(@AuthUser() auth: AuthPayload, @Param('inviteId') inviteId: string) {
+    const result = await cancelVehicleInvite(inviteId, auth.userId);
+    if (!result.ok) throw new HttpException(result.error ?? 'Error', HttpStatus.BAD_REQUEST);
+    return result.invite;
+  }
+
+  @Post(':inviteId/extend')
+  async extend(@AuthUser() auth: AuthPayload, @Param('inviteId') inviteId: string) {
+    const result = await extendVehicleInvite(inviteId, auth.userId);
+    if (!result.ok) throw new HttpException(result.error ?? 'Error', HttpStatus.BAD_REQUEST);
+    return result.invite;
+  }
+
+  @Post(':inviteId/regenerate')
+  async regenerate(@AuthUser() auth: AuthPayload, @Param('inviteId') inviteId: string) {
+    const result = await regenerateVehicleInvite(inviteId, auth.userId);
+    if (!result.ok) throw new HttpException(result.error ?? 'Error', HttpStatus.BAD_REQUEST);
+    return result.invite;
   }
 }

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { DriversController } from './drivers.controller';
+import { AdminVehicleInvitesController, DriversController } from './drivers.controller';
 
 @Module({
-  controllers: [DriversController],
+  controllers: [DriversController, AdminVehicleInvitesController],
 })
 export class DriversModule {}
