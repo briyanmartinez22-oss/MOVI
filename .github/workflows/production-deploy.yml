@@ -110,6 +110,7 @@ jobs:
 
       - name: Capture current deployment id (rollback target)
         id: rollback
+        working-directory: backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
@@ -118,6 +119,7 @@ jobs:
 
       - name: Deploy backend to Railway PRODUCTION
         id: deploy
+        working-directory: backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --detach
@@ -137,6 +139,7 @@ jobs:
 
       - name: Rollback on smoke failure
         if: failure() && steps.rollback.outputs.previous != ''
+        working-directory: backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
