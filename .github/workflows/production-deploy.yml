@@ -112,17 +112,15 @@ jobs:
         id: rollback
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_PRODUCTION_BACKEND_SERVICE_ID }}
         run: |
-          PREVIOUS=$(railway deployment list --service "$RAILWAY_SERVICE_ID" --json | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log(j[0]?.id||'')}catch{console.log('')}})")
+          PREVIOUS=$(railway deployment list --json | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log(j[0]?.id||'')}catch{console.log('')}})")
           echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
 
       - name: Deploy backend to Railway PRODUCTION
         id: deploy
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_PRODUCTION_BACKEND_SERVICE_ID }}
-        run: railway up --service "$RAILWAY_SERVICE_ID" --detach
+        run: railway up --detach
 
       - name: Post-deploy smoke (production)
         id: smoke
@@ -141,7 +139,6 @@ jobs:
         if: failure() && steps.rollback.outputs.previous != ''
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_PRODUCTION_BACKEND_SERVICE_ID }}
         run: |
           echo "Rolling back to deployment ${{ steps.rollback.outputs.previous }}"
-          railway redeploy --service "$RAILWAY_SERVICE_ID" --deployment "${{ steps.rollback.outputs.previous }}"
+          railway redeploy --deployment "${{ steps.rollback.outputs.previous }}"
