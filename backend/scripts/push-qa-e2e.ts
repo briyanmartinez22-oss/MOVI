@@ -5,6 +5,7 @@
  */
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
+const QA_PASSWORD = process.env.QA_TEST_PASSWORD ?? 'QaTest123';
 
 type StepResult = { step: string; status: 'PASS' | 'FAIL'; detail?: string };
 const results: StepResult[] = [];
@@ -35,6 +36,7 @@ async function loginPassenger(): Promise<string> {
   const reg = await req('/passengers/register', {
     phone,
     fullName: 'QA Push Passenger',
+    password: QA_PASSWORD,
   });
   const token = reg.json.data?.authToken as string | undefined;
   if (!token) throw new Error('No auth token for push QA');

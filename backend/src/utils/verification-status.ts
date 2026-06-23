@@ -19,6 +19,7 @@ const OWNER_MAP: Record<string, MvpVerificationStatus> = {
 
 const VEHICLE_MAP: Record<string, MvpVerificationStatus> = {
   draft: 'PENDING_DOCUMENTS',
+  incomplete: 'PENDING_DOCUMENTS',
   documents_uploaded: 'PENDING_DOCUMENTS',
   under_review: 'PENDING_REVIEW',
   approved: 'VERIFIED',

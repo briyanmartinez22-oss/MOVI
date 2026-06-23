@@ -49,6 +49,7 @@ export function FormInput({
   multiline = false,
   hint,
   onBlur,
+  secureTextEntry = false,
 }: {
   label: string;
   value: string;
@@ -58,6 +59,7 @@ export function FormInput({
   multiline?: boolean;
   hint?: string;
   onBlur?: () => void;
+  secureTextEntry?: boolean;
 }) {
   return (
     <View style={styles.field}>
@@ -70,10 +72,11 @@ export function FormInput({
         placeholderTextColor={colors.textMuted}
         keyboardType={keyboardType}
         inputMode={keyboardType === 'phone-pad' ? 'tel' : keyboardType === 'numeric' ? 'numeric' : 'text'}
-        autoComplete={keyboardType === 'phone-pad' ? 'tel' : 'off'}
+        autoComplete={secureTextEntry ? 'password' : keyboardType === 'phone-pad' ? 'tel' : 'off'}
         editable
         multiline={multiline}
         onBlur={onBlur}
+        secureTextEntry={secureTextEntry}
       />
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>

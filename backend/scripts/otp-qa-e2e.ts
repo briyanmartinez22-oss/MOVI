@@ -3,7 +3,7 @@
  * QA — OTP / Twilio Verify readiness
  * Usage: npm run qa:otp
  */
-import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+import { driverInviteRegisterPayload, ownerRegisterPayload, QA_PASSWORD, loginWithPassword } from './qa-registration';
 
 const API = process.env.API_URL ?? 'http://localhost:3001';
 const OTP = process.env.DEMO_OTP_CODE ?? '123456';
@@ -73,6 +73,7 @@ async function run() {
   const blockedPassenger = await req('/passengers/register', {
     phone: uniquePhone('70'),
     fullName: 'QA OTP Blocked',
+    password: QA_PASSWORD,
   });
   record(
     'registro pasajero bloqueado sin OTP',
@@ -93,6 +94,7 @@ async function run() {
   const allowedPassenger = await req('/passengers/register', {
     phone: svPhone,
     fullName: 'QA OTP Allowed',
+    password: QA_PASSWORD,
   });
   record(
     'registro pasajero permitido con OTP verificado',

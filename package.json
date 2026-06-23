@@ -42,6 +42,7 @@
     "qa:beta-final": "cd backend && npm run qa:beta-final",
     "qa:integrations": "cd backend && npm run qa:integrations",
     "qa:otp": "cd backend && npm run qa:otp",
+    "qa:auth": "cd backend && npm run qa:auth",
     "qa:maps": "cd backend && npm run qa:maps",
     "qa:push": "cd backend && npm run qa:push",
     "qa:beta-closed": "cd backend && npm run qa:beta-closed",

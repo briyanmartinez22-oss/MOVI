@@ -1,15 +1,21 @@
 import { prisma } from '../lib/prisma';
-import { normalizePhone } from '../utils/phone';
+import { normalizePhone, phoneLookupVariants } from '../utils/phone';
 
 export const SUPER_ADMIN_PHONE = '+12144698637';
 export const SUPER_ADMIN_DUI = process.env.SUPER_ADMIN_DUI ?? '00000000-0';
 export const SUPER_ADMIN_NAME = process.env.SUPER_ADMIN_NAME ?? 'MOVI Super Admin';
 
-/** Busca usuario por teléfono canónico (+503 / +1). */
+/** Busca usuario por teléfono canónico (+503 / +1) y variantes legacy. */
 export async function findUserByPhone(phone: string) {
-  const phoneNumber = normalizePhone(phone);
-  if (!phoneNumber) return null;
-  return prisma.user.findUnique({ where: { phoneNumber } });
+  const variants = phoneLookupVariants(phone);
+  if (variants.length === 0) return null;
+
+  for (const phoneNumber of variants) {
+    const user = await prisma.user.findUnique({ where: { phoneNumber } });
+    if (user) return user;
+  }
+
+  return null;
 }
 
 /** Idempotente — garantiza SuperAdmin real en la BD activa. */

@@ -3,7 +3,7 @@
  * MOVI MVP QA — 10-step end-to-end validation
  * Usage: npx tsx scripts/mvp-qa-e2e.ts
  */
-import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+import { driverInviteRegisterPayload, ownerRegisterPayload, QA_PASSWORD, loginWithPassword } from './qa-registration';
 import { loginAsSuperAdmin } from './admin-qa-auth';
 
 const API = process.env.API_URL ?? 'http://localhost:3001';
@@ -32,12 +32,8 @@ async function req(
   return { status: res.status, json };
 }
 
-async function loginAs(phone: string, dui: string): Promise<string> {
-  await req('/auth/request-otp', { phone });
-  await req('/auth/verify-otp', { phone, code: OTP });
-  const login = await req('/auth/login', { phone, dui, code: OTP });
-  if (!login.json.ok) throw new Error(`Login failed (${phone}): ${login.json.error}`);
-  return login.json.data.authToken as string;
+async function loginAs(phone: string, password = QA_PASSWORD): Promise<string> {
+  return loginWithPassword(req, phone, password);
 }
 
 function record(step: string, ok: boolean, detail?: string) {
@@ -59,6 +55,7 @@ async function run() {
   const regPass = await req('/passengers/register', {
     phone: newPassengerPhone,
     fullName: 'QA Pasajero MVP',
+    password: QA_PASSWORD,
   });
   const passengerToken = regPass.json.data?.authToken as string;
   record('1. Registro pasajero', regPass.json.ok === true, regPass.json.error);

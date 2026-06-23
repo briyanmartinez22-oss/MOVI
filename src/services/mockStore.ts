@@ -40,6 +40,7 @@ export interface MockStoreData {
   demandZones: DemandZone[];
   currentUserId: string | null;
   otpPhone: string | null;
+  passwords?: Record<string, string>;
   simulationMeta?: DemoSimulationMeta;
   passengerProfiles?: PassengerProfileExtra[];
   roleStats?: DemoRoleStats;

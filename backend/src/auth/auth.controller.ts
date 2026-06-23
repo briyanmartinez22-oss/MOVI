@@ -13,12 +13,29 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { AuthPayload } from '../common/guards/jwt-auth.guard';
 import { rotateRefreshToken, revokeRefreshToken } from '../lib/refreshToken';
 import { signAuthToken } from '../lib/jwt';
-import { getMe, loginWithOtp } from '../services/moviService';
+import { getMe } from '../services/moviService';
 import { requestOtp, verifyOtp } from '../services/otpService';
+import {
+  forgotPassword,
+  loginWithPassword,
+  resetPassword,
+  setInitialPassword,
+} from '../services/auth.service';
+import { loginWithOtp } from '../services/moviService';
 import { updateUserProfilePhoto } from '../services/users.service';
-import { isValidMoviPhone } from '../utils/phone';
+import { isValidMoviPhone, normalizePhone } from '../utils/phone';
 
-const phoneSchema = z.string().refine(isValidMoviPhone, 'Número de teléfono inválido');
+const phoneSchema = z
+  .string()
+  .min(1)
+  .transform((value) => normalizePhone(value))
+  .refine((value) => isValidMoviPhone(value), 'Número de teléfono inválido');
+
+const passwordSchema = z
+  .string()
+  .min(8, 'Mínimo 8 caracteres')
+  .regex(/[a-zA-Z]/, 'Debe incluir al menos una letra')
+  .regex(/\d/, 'Debe incluir al menos un número');
 
 @Controller('auth')
 export class AuthController {
@@ -57,19 +74,126 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() body: unknown) {
-    const parsed = z
+    const passwordLogin = z
+      .object({
+        phone: phoneSchema,
+        password: z.string().min(1, 'La contraseña es requerida'),
+      })
+      .safeParse(body);
+
+    if (passwordLogin.success) {
+      const result = await loginWithPassword(
+        passwordLogin.data.phone,
+        passwordLogin.data.password
+      );
+      if (!result.ok) {
+        const payload =
+          'code' in result && result.code
+            ? { error: result.error ?? 'Login fallido', code: result.code }
+            : (result.error ?? 'Login fallido');
+        throw new HttpException(payload, HttpStatus.BAD_REQUEST);
+      }
+      return {
+        user: result.user,
+        authToken: result.authToken,
+        refreshToken: result.refreshToken,
+      };
+    }
+
+    const otpLogin = z
       .object({
         phone: phoneSchema,
         dui: z.string().min(5).optional(),
         code: z.string().min(4),
       })
       .safeParse(body);
-    if (!parsed.success) {
+
+    if (!otpLogin.success) {
+      const hasPhone = typeof (body as { phone?: unknown })?.phone === 'string';
+      const hasPassword = typeof (body as { password?: unknown })?.password === 'string';
+      if (hasPhone && hasPassword) {
+        throw new HttpException(
+          'Teléfono o contraseña inválidos. Verifica el formato (+503 o +1).',
+          HttpStatus.BAD_REQUEST
+        );
+      }
       throw new HttpException('Datos de login inválidos', HttpStatus.BAD_REQUEST);
     }
-    const result = await loginWithOtp(parsed.data.phone, parsed.data.dui, parsed.data.code);
+
+    const result = await loginWithOtp(
+      otpLogin.data.phone,
+      otpLogin.data.dui,
+      otpLogin.data.code
+    );
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Login fallido', HttpStatus.BAD_REQUEST);
+    }
+    return {
+      user: result.user,
+      authToken: result.authToken,
+      refreshToken: result.refreshToken,
+    };
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() body: unknown) {
+    const parsed = z.object({ phone: phoneSchema }).safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException('Teléfono inválido', HttpStatus.BAD_REQUEST);
+    }
+    const result = await forgotPassword(parsed.data.phone);
+    if (!result.ok) {
+      throw new HttpException(result.error ?? 'Error al enviar OTP', HttpStatus.BAD_REQUEST);
+    }
+    return { sent: true };
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body() body: unknown) {
+    const parsed = z
+      .object({
+        phone: phoneSchema,
+        code: z.string().min(4),
+        password: passwordSchema,
+        confirmPassword: z.string().min(1),
+      })
+      .safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException('Datos de recuperación inválidos', HttpStatus.BAD_REQUEST);
+    }
+    const result = await resetPassword(
+      parsed.data.phone,
+      parsed.data.code,
+      parsed.data.password,
+      parsed.data.confirmPassword
+    );
+    if (!result.ok) {
+      throw new HttpException(result.error ?? 'Error al restablecer contraseña', HttpStatus.BAD_REQUEST);
+    }
+    return { reset: true };
+  }
+
+  @Post('set-password')
+  async setPassword(@Body() body: unknown) {
+    const parsed = z
+      .object({
+        phone: phoneSchema,
+        code: z.string().min(4),
+        password: passwordSchema,
+        confirmPassword: z.string().min(1),
+      })
+      .safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException('Datos inválidos', HttpStatus.BAD_REQUEST);
+    }
+    const result = await setInitialPassword(
+      parsed.data.phone,
+      parsed.data.code,
+      parsed.data.password,
+      parsed.data.confirmPassword
+    );
+    if (!result.ok) {
+      throw new HttpException(result.error ?? 'Error al crear contraseña', HttpStatus.BAD_REQUEST);
     }
     return {
       user: result.user,

@@ -274,6 +274,7 @@ async function run() {
   const blockedRegister = await req('/passengers/register', {
     phone: unverifiedPhone,
     fullName: 'QA Blocked Passenger',
+    password: 'QaTest123',
   });
   record(
     'Registro bloqueado sin OTP verificado',

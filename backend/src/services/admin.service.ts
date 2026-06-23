@@ -176,6 +176,8 @@ export async function listAdminOwners() {
     mvpStatus: mapOwnerMvpStatus(o.status),
     vehicleCount: o.vehicles.length,
     driverCount: o.drivers.length,
+    hasPasswordHash: Boolean(o.user.passwordHash),
+    passwordSetAt: o.user.passwordSetAt?.toISOString() ?? null,
     createdAt: o.createdAt.toISOString(),
   }));
 }

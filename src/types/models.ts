@@ -153,6 +153,7 @@ export type OwnerVerificationStatus =
 
 export type VehicleVerificationStatus =
   | 'draft'
+  | 'incomplete'
   | 'documents_uploaded'
   | 'under_review'
   | 'approved'
@@ -176,6 +177,8 @@ export interface AuthUser {
   duiNumber: string;
   role: UserRole;
   phoneVerified: boolean;
+  passwordSet?: boolean;
+  needsPasswordSet?: boolean;
   profilePhoto?: string;
   createdAt: string;
   updatedAt: string;
@@ -242,6 +245,8 @@ export interface Vehicle {
   model?: string;
   year?: number;
   color?: string;
+  rejectReason?: string;
+  autoRejected?: boolean;
   createdAt: string;
 }
 

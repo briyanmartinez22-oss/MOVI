@@ -34,6 +34,31 @@ export type AdminPassengerRecord = {
   createdAt: string;
 };
 
+export type AdminVehicleRecord = {
+  id: string;
+  vehicleId: string;
+  unitId: string;
+  ownerId: string;
+  unitNumber: string;
+  plateNumber: string;
+  registrationName?: string;
+  associationName: string;
+  vehicleType: string;
+  status: string;
+  mvpStatus: string;
+  brand?: string;
+  model?: string;
+  year?: number;
+  color?: string;
+  rejectReason?: string;
+  autoRejected?: boolean;
+  documents: Record<string, string>;
+  photos?: string[];
+  owner: { id: string; name: string; phone: string; dui: string } | null;
+  driver: { id: string; name: string; phone: string; status: string } | null;
+  createdAt: string;
+};
+
 export type AdminPassengerDetail = AdminPassengerRecord & {
   recentTrips?: Array<{
     id: string;

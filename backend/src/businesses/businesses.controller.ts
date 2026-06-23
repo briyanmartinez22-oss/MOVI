@@ -18,6 +18,7 @@ export class BusinessesController {
         latitude: z.number(),
         longitude: z.number(),
         addressLabel: z.string().min(2),
+        password: z.string().min(8),
       })
       .safeParse(body);
     if (!parsed.success) {
@@ -28,6 +29,7 @@ export class BusinessesController {
       parsed.data.phone,
       parsed.data.fullName,
       parsed.data.dui,
+      parsed.data.password,
       parsed.data
     );
     if (!result.ok) {

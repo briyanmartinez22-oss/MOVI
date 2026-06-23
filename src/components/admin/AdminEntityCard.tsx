@@ -11,6 +11,7 @@ export type EntityAction =
   | 'reject'
   | 'suspend'
   | 'reactivate'
+  | 'resetPassword'
   | 'delete';
 
 type Props = {
@@ -28,6 +29,7 @@ const LABELS: Record<EntityAction, string> = {
   reject: 'Rechazar',
   suspend: 'Suspender',
   reactivate: 'Reactivar',
+  resetPassword: 'Reset contraseña',
   delete: 'Eliminar',
 };
 

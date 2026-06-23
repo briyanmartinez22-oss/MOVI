@@ -77,6 +77,25 @@ export async function verifyOtp(
   return ok({ verified: true, isNewUser: res.isNewUser ?? false, existingRole: existing?.role ?? null });
 }
 
+export async function loginWithPassword(
+  phone: string,
+  password: string
+): Promise<ApiResponse<AuthUser>> {
+  await ensureStoreReady();
+  const byPhone = findUserByPhone(phone);
+  if (!byPhone) return fail('Teléfono o contraseña incorrectos.');
+  if (byPhone.role === 'admin') {
+    return fail('Las cuentas administrativas usan OTP.');
+  }
+  const stored = getStore().passwords?.[normalizePhone(phone)];
+  if (!stored || stored !== password) {
+    return fail('Teléfono o contraseña incorrectos.');
+  }
+  setCurrentUser(byPhone.userId);
+  await persistSession(byPhone);
+  return ok(byPhone);
+}
+
 export async function loginWithOtp(
   phone: string,
   dui: string | undefined,
@@ -112,11 +131,18 @@ export async function loginWithOtp(
 
 export async function registerPassenger(
   phone: string,
-  fullName: string
+  fullName: string,
+  password?: string
 ): Promise<ApiResponse<AuthUser>> {
   if (findUserByPhone(phone)) return fail('Este teléfono ya está registrado.');
   const user = createUser(phone, fullName, '', 'passenger');
-  updateStore((s) => ({ ...s, users: [...s.users, user], currentUserId: user.userId }));
+  const pwd = password ?? 'QaTest123';
+  updateStore((s) => ({
+    ...s,
+    users: [...s.users, user],
+    currentUserId: user.userId,
+    passwords: { ...(s.passwords ?? {}), [normalizePhone(phone)]: pwd },
+  }));
   await persistSession(user);
   return ok(user);
 }
@@ -266,16 +292,23 @@ export async function submitVehicleVerification(
 
   const regName = vehicle.registrationName ?? '';
   if (regName && !namesMatch(owner.name, regName)) {
-    let rejected: Vehicle | undefined;
+    let incomplete: Vehicle | undefined;
     updateStore((s) => {
       const vehicles = s.vehicles.map((v) => {
         if (v.vehicleId !== vehicleId) return v;
-        rejected = { ...v, status: 'rejected' };
-        return rejected;
+        incomplete = {
+          ...v,
+          status: 'incomplete',
+          rejectReason:
+            'El nombre en la tarjeta de circulación no coincide con el DUI del dueño.',
+        };
+        return incomplete;
       });
       return { ...s, vehicles };
     });
-    return fail('Nombre en tarjeta de circulación no coincide con el DUI. Unidad rechazada.');
+    return fail(
+      'El nombre en tarjeta de circulación no coincide con el registrado. Corrige los datos y vuelve a enviar.'
+    );
   }
 
   let updated: Vehicle | undefined;
@@ -392,10 +425,12 @@ export async function registerBusiness(
     latitude: number;
     longitude: number;
     addressLabel: string;
+    password?: string;
   }
 ): Promise<ApiResponse<{ user: AuthUser; business: BusinessProfile }>> {
   if (findUserByPhone(phone)) return fail('Este teléfono ya está registrado.');
   const user = createUser(phone, fullName, normalizeDui(dui), 'business');
+  const pwd = data.password ?? 'QaTest123';
   const business: BusinessProfile = {
     id: generateId('business'),
     userId: user.userId,
@@ -416,6 +451,7 @@ export async function registerBusiness(
     users: [...s.users, user],
     businesses: [...s.businesses, business],
     currentUserId: user.userId,
+    passwords: { ...(s.passwords ?? {}), [normalizePhone(phone)]: pwd },
   }));
   await persistSession(user);
   return ok({ user, business });

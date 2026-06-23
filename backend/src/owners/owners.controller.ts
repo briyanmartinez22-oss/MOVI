@@ -30,6 +30,13 @@ import {
   regenerateVehicleInvite,
 } from '../services/vehicle-invite.service';
 import { parseMultipartOrJsonDocs } from '../utils/documents';
+import { isValidMoviPhone, normalizePhone } from '../utils/phone';
+
+const phoneSchema = z
+  .string()
+  .min(1)
+  .transform((value) => normalizePhone(value))
+  .refine((value) => isValidMoviPhone(value), 'Número de teléfono inválido');
 
 @Controller('owners')
 export class OwnersController {
@@ -37,13 +44,14 @@ export class OwnersController {
   async register(@Body() body: unknown) {
     const parsed = z
       .object({
-        phone: z.string().min(8),
+        phone: phoneSchema,
         firstName: z.string().min(1),
         lastName: z.string().min(1),
         fullName: z.string().min(2).optional(),
         dui: z.string().min(5),
         email: z.string().email().optional().or(z.literal('')),
         documentType: z.enum(['DUI', 'LICENSE']).optional(),
+        password: z.string().min(8),
       })
       .safeParse(body);
     if (!parsed.success) {
@@ -59,6 +67,7 @@ export class OwnersController {
       firstName,
       lastName,
       parsed.data.dui,
+      parsed.data.password,
       parsed.data.email || undefined,
       parsed.data.documentType
     );

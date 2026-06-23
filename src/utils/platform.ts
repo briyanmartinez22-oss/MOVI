@@ -14,8 +14,19 @@ export function generateDriverPublicId(existingCount: number): string {
 
 /** Canonical MOVI format: +503XXXXXXXX (SV) or +1XXXXXXXXXX (US) */
 export function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
+  const trimmed = phone.trim();
+  if (!trimmed) return '';
+
+  const compact = trimmed.replace(/\s/g, '');
+  if (/^\+503\d{8}$/.test(compact)) return compact;
+  if (/^\+1\d{10}$/.test(compact)) return compact;
+
+  let digits = trimmed.replace(/\D/g, '');
   if (!digits) return '';
+
+  if (digits.length === 9 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
 
   if (digits.length === 8) {
     return `+503${digits}`;

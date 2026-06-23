@@ -42,6 +42,11 @@ import {
 } from '../profileCache';
 import { realtimeClient } from '../realtimeClient';
 import { mapSubscription, mapVehicle } from '../apiMappers';
+import { normalizePhone } from '../../utils/platform';
+
+function authPhone(phone: string): string {
+  return normalizePhone(phone) || phone.trim();
+}
 
 function ok<T>(data: T): ApiResponse<T> {
   return { ok: true, data };
@@ -62,7 +67,7 @@ async function persistAuthResponse(
 
 export async function requestOtp(phone: string): Promise<ApiResponse<{ sent: boolean }>> {
   if (useMockApi()) return mock.requestOtp(phone);
-  const res = await apiPost<{ sent: boolean }>('/auth/request-otp', { phone }, { auth: false });
+  const res = await apiPost<{ sent: boolean }>('/auth/request-otp', { phone: authPhone(phone) }, { auth: false });
   return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al enviar OTP');
 }
 
@@ -75,7 +80,7 @@ export async function verifyOtp(
     verified: boolean;
     isNewUser: boolean;
     existingRole?: string | null;
-  }>('/auth/verify-otp', { phone, code }, { auth: false });
+  }>('/auth/verify-otp', { phone: authPhone(phone), code }, { auth: false });
   return res.ok ? ok(res.data!) : fail(res.error ?? 'OTP inválido');
 }
 
@@ -95,14 +100,86 @@ export async function loginWithOtp(
   return ok(res.data.user);
 }
 
+export async function loginWithPassword(
+  phone: string,
+  password: string
+): Promise<ApiResponse<AuthUser> & { code?: string }> {
+  if (useMockApi()) return mock.loginWithPassword(phone, password);
+  const res = await apiPost<{ user: AuthUser; authToken: string; refreshToken?: string }>(
+    '/auth/login',
+    { phone: authPhone(phone), password },
+    { auth: false }
+  );
+  if (!res.ok || !res.data) {
+    return { ...fail(res.error ?? 'Error al iniciar sesión'), code: res.code };
+  }
+  await persistAuthResponse(res.data.user, res.data.authToken, res.data.refreshToken);
+  return ok(res.data.user);
+}
+
+export async function loginWithOtpAdmin(
+  phone: string,
+  dui: string,
+  code: string
+): Promise<ApiResponse<AuthUser>> {
+  if (useMockApi()) return mock.loginWithOtp(phone, dui, code);
+  const res = await apiPost<{ user: AuthUser; authToken: string; refreshToken?: string }>(
+    '/auth/login',
+    { phone, dui, code },
+    { auth: false }
+  );
+  if (!res.ok || !res.data) return fail(res.error ?? 'Error al iniciar sesión');
+  await persistAuthResponse(res.data.user, res.data.authToken, res.data.refreshToken);
+  return ok(res.data.user);
+}
+
+export async function forgotPassword(phone: string): Promise<ApiResponse<{ sent: boolean }>> {
+  if (useMockApi()) return ok({ sent: true });
+  const res = await apiPost<{ sent: boolean }>('/auth/forgot-password', { phone }, { auth: false });
+  return res.ok ? ok(res.data ?? { sent: true }) : fail(res.error ?? 'Error al enviar OTP');
+}
+
+export async function resetPassword(
+  phone: string,
+  code: string,
+  password: string,
+  confirmPassword: string
+): Promise<ApiResponse<{ reset: boolean }>> {
+  if (useMockApi()) return ok({ reset: true });
+  const res = await apiPost<{ reset: boolean }>(
+    '/auth/reset-password',
+    { phone, code, password, confirmPassword },
+    { auth: false }
+  );
+  return res.ok ? ok(res.data ?? { reset: true }) : fail(res.error ?? 'Error al restablecer');
+}
+
+export async function setInitialPassword(
+  phone: string,
+  code: string,
+  password: string,
+  confirmPassword: string
+): Promise<ApiResponse<AuthUser>> {
+  if (useMockApi()) return mock.loginWithPassword(phone, password);
+  const res = await apiPost<{ user: AuthUser; authToken: string; refreshToken?: string }>(
+    '/auth/set-password',
+    { phone, code, password, confirmPassword },
+    { auth: false }
+  );
+  if (!res.ok || !res.data) return fail(res.error ?? 'Error al crear contraseña');
+  await persistAuthResponse(res.data.user, res.data.authToken, res.data.refreshToken);
+  return ok(res.data.user);
+}
+
 export async function registerPassenger(
   phone: string,
-  fullName: string
+  fullName: string,
+  password: string
 ): Promise<ApiResponse<AuthUser>> {
-  if (useMockApi()) return mock.registerPassenger(phone, fullName);
+  if (useMockApi()) return mock.registerPassenger(phone, fullName, password);
   const res = await apiPost<{ user: AuthUser; authToken: string }>(
     '/passengers/register',
-    { phone, fullName },
+    { phone: authPhone(phone), fullName, password },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar');
@@ -115,13 +192,14 @@ export async function registerOwner(
   firstName: string,
   lastName: string,
   dui: string,
+  password: string,
   email?: string,
   documentType?: 'DUI' | 'LICENSE'
 ): Promise<ApiResponse<{ user: AuthUser; owner: Owner }>> {
   if (useMockApi()) return mock.registerOwner(phone, `${firstName} ${lastName}`, dui);
   const res = await apiPost<{ user: AuthUser; owner: Owner; authToken: string }>(
     '/owners/register',
-    { phone, firstName, lastName, dui, email, documentType },
+    { phone: authPhone(phone), firstName, lastName, dui, email, documentType, password },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar');
@@ -317,6 +395,7 @@ export async function registerDriverWithInvite(input: {
   code: string;
   licenseFront: string;
   licenseBack: string;
+  password: string;
 }): Promise<ApiResponse<{ user: AuthUser; driver: DriverProfileRecord }>> {
   if (useMockApi()) {
     return mock.registerDriverWithInvite(
@@ -328,7 +407,7 @@ export async function registerDriverWithInvite(input: {
   }
   const res = await apiPost<{ user: AuthUser; driver: DriverProfileRecord; authToken: string }>(
     '/drivers/register-with-invite',
-    input,
+    { ...input, phone: authPhone(input.phone) },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar conductor');
@@ -349,12 +428,13 @@ export async function registerBusiness(
     latitude: number;
     longitude: number;
     addressLabel: string;
+    password?: string;
   }
 ): Promise<ApiResponse<{ user: AuthUser; business: BusinessProfile }>> {
   if (useMockApi()) return mock.registerBusiness(phone, fullName, dui, data);
   const res = await apiPost<{ user: AuthUser; business: BusinessProfile; authToken: string }>(
     '/businesses/register',
-    { phone, fullName, dui, ...data },
+    { phone, fullName, dui, ...data, password: data.password ?? 'QaTest123' },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar negocio');
@@ -543,6 +623,42 @@ export async function fetchAdminOwners() {
   if (useMockApi()) return [];
   const res = await apiGet<{ owners: Record<string, unknown>[] }>('/admin/owners');
   return res.ok ? res.data?.owners ?? [] : [];
+}
+
+export async function triggerOwnerPasswordReset(ownerId: string) {
+  if (useMockApi()) return ok({ sent: true, message: 'OTP simulado enviado' });
+  const res = await apiPost<{ sent: boolean; message?: string; phone?: string; hasPasswordHash?: boolean }>(
+    `/admin/owners/${ownerId}/trigger-password-reset`
+  );
+  return res.ok ? ok(res.data ?? { sent: true }) : fail(res.error ?? 'Error al enviar OTP');
+}
+
+export async function fetchAdminVehicles() {
+  if (useMockApi()) return [];
+  const res = await apiGet<{ vehicles: import('../../types/adminUsers').AdminVehicleRecord[] }>(
+    '/admin/vehicles'
+  );
+  return res.ok ? res.data?.vehicles ?? [] : [];
+}
+
+export async function fetchAdminVehicleDetail(vehicleId: string) {
+  if (useMockApi()) return null;
+  const res = await apiGet<import('../../types/adminUsers').AdminVehicleRecord>(
+    `/admin/vehicles/${vehicleId}`
+  );
+  return res.ok ? res.data ?? null : null;
+}
+
+export async function reactivateVehicle(vehicleId: string): Promise<ApiResponse<Vehicle>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiPost<Vehicle>(`/admin/vehicles/${vehicleId}/reactivate`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al reactivar vehículo');
+}
+
+export async function deleteVehicle(vehicleId: string): Promise<ApiResponse<{ deleted: boolean }>> {
+  if (useMockApi()) return fail('No disponible en mock');
+  const res = await apiDelete<{ deleted: boolean }>(`/admin/vehicles/${vehicleId}`);
+  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al eliminar vehículo');
 }
 
 export async function fetchAdminBusinesses() {
@@ -940,9 +1056,12 @@ export async function approveVehicle(vehicleId: string): Promise<ApiResponse<Veh
   return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al aprobar vehículo');
 }
 
-export async function rejectVehicle(vehicleId: string): Promise<ApiResponse<Vehicle>> {
+export async function rejectVehicle(
+  vehicleId: string,
+  reason?: string
+): Promise<ApiResponse<Vehicle>> {
   if (useMockApi()) return mock.rejectVehicle(vehicleId);
-  const res = await apiPost<Vehicle>(`/admin/vehicles/${vehicleId}/reject`);
+  const res = await apiPost<Vehicle>(`/admin/vehicles/${vehicleId}/reject`, { reason });
   return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al rechazar vehículo');
 }
 

@@ -22,6 +22,8 @@ import {
 } from './mockStore';
 import { AuthUser, UserRole } from '../types/models';
 import { duiFormatVariants, normalizeDuiDigits } from '../utils/platform';
+
+const QA_PASSWORD = 'QaTest123';
 import {
   TAGLINE_PRIMARY,
   TAGLINE_SECONDARY,
@@ -234,7 +236,7 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
       const verify = await mockApi.verifyOtp(phone, DEMO_OTP_CODE);
       assert(verify.ok && verify.data?.isNewUser === true, 'OTP debe marcar usuario nuevo');
 
-      const reg = await mockApi.registerPassenger(phone, 'QA Nav Pasajero');
+      const reg = await mockApi.registerPassenger(phone, 'QA Nav Pasajero', QA_PASSWORD);
       assert(reg.ok && reg.data?.role === 'passenger', 'Registro tras OTP falló');
 
       const again = await hasPermissionsAccepted('passenger_register');
@@ -290,7 +292,8 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
         ownerPhone,
         'QA',
         'Dueño Formato',
-        ownerDuiDigits
+        ownerDuiDigits,
+        QA_PASSWORD
       );
       assert(ownerReg.ok, ownerReg.error ?? 'Registro dueño numérico falló');
       assert(
@@ -326,7 +329,7 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
     await track('register-passenger', 'Registro pasajero nuevo', async () => {
       const phone = qaPhone('01');
       const dui = qaDui('1');
-      const res = await mockApi.registerPassenger(phone, 'QA Pasajero');
+      const res = await mockApi.registerPassenger(phone, 'QA Pasajero', QA_PASSWORD);
       assert(res.ok, res.error ?? 'Registro pasajero falló');
       return res.data!.fullName;
     });
@@ -376,7 +379,7 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
     await track('register-owner', 'Registro dueño', async () => {
       const phone = qaPhone('02');
       const dui = qaDui('2');
-      const res = await mockApi.registerOwner(phone, 'QA', 'Dueño', dui);
+      const res = await mockApi.registerOwner(phone, 'QA', 'Dueño', dui, QA_PASSWORD);
       assert(res.ok, res.error ?? 'Registro dueño falló');
       const docs = await mockApi.uploadOwnerDocuments(res.data!.owner.id, {
         duiFront: 'mock://qa-dui-front',
@@ -447,6 +450,7 @@ export async function runFullQaSuite(onProgress?: (step: QaStepResult) => void):
         code: qaInviteCode!,
         licenseFront: 'mock://qa-license-front',
         licenseBack: 'mock://qa-license-back',
+        password: QA_PASSWORD,
       });
       assert(res.ok, res.error ?? 'Registro conductor falló');
       return res.data!.driver.name;

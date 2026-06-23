@@ -55,10 +55,12 @@ export function toAuthUser(user: {
   duiNumber: string | null;
   role: string;
   phoneVerified: boolean;
+  passwordHash?: string | null;
   profilePhoto: string | null;
   createdAt: Date;
   updatedAt: Date;
 }) {
+  const passwordSet = Boolean(user.passwordHash);
   return {
     userId: user.id,
     fullName: user.fullName,
@@ -66,6 +68,8 @@ export function toAuthUser(user: {
     duiNumber: user.duiNumber ?? '',
     role: user.role,
     phoneVerified: user.phoneVerified,
+    passwordSet,
+    needsPasswordSet: !passwordSet && user.role !== 'admin',
     profilePhoto: user.profilePhoto ?? undefined,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),

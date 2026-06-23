@@ -29,6 +29,7 @@ enum OwnerVerificationStatus {
 
 enum VehicleVerificationStatus {
   draft
+  incomplete
   documents_uploaded
   under_review
   approved
@@ -238,6 +239,8 @@ model User {
   role          UserRole
   accountStatus AccountStatus @default(active)
   phoneVerified Boolean       @default(false)
+  passwordHash  String?
+  passwordSetAt DateTime?
   profilePhoto  String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -348,6 +351,8 @@ model Vehicle {
   cargoCapacity    Float?
   photosJson       String                    @default("[]")
   registrationCard String?
+  rejectReason     String?
+  autoRejected     Boolean                   @default(false)
   deletedAt        DateTime?
   deletedBy        String?
   deleteReason     String?

@@ -29,6 +29,12 @@ const CONFIRM_MESSAGES: Partial<Record<EntityAction, ConfirmConfig>> = {
     message: '¿Confirmas reactivar este registro?',
     confirmLabel: 'Reactivar',
   },
+  resetPassword: {
+    title: 'Reset contraseña',
+    message:
+      'Se enviará un OTP al teléfono del dueño para crear o restablecer su contraseña. ¿Continuar?',
+    confirmLabel: 'Enviar OTP',
+  },
   delete: {
     title: 'Eliminar',
     message: 'Esta acción es permanente. ¿Eliminar este registro y su cuenta?',

@@ -40,6 +40,15 @@ import {
   suspendAdminPassenger,
   updateAdminPassenger,
 } from '../services/admin-entity-actions.service';
+import {
+  approveAdminVehicle,
+  deleteAdminVehicle,
+  getAdminVehicleDetail,
+  reactivateAdminVehicle,
+  rejectAdminVehicle,
+  suspendAdminVehicle,
+} from '../services/admin-vehicle-actions.service';
+import { triggerOwnerPasswordReset } from '../services/admin-password.service';
 import { getAdminStaffRole } from '../services/admin-staff.service';
 
 type AuthRequest = Request & { auth?: AuthPayload };
@@ -145,6 +154,16 @@ export class AdminEntitiesController {
     return throwIfNotOk(await reactivateAdminOwner(ownerId, await adminCtx(req)));
   }
 
+  @Post('owners/:ownerId/trigger-password-reset')
+  @RequirePermission('owners.approve')
+  async triggerOwnerPasswordReset(@Param('ownerId') ownerId: string, @Req() req: AuthRequest) {
+    const result = await triggerOwnerPasswordReset(ownerId, await adminCtx(req));
+    if (!result.ok) {
+      throw new HttpException(result.error ?? 'Error', HttpStatus.BAD_REQUEST);
+    }
+    return result;
+  }
+
   @Delete('owners/:ownerId')
   @RequirePermission('owners.delete')
   async deleteOwner(@Param('ownerId') ownerId: string, @Req() req: AuthRequest) {
@@ -179,5 +198,46 @@ export class AdminEntitiesController {
   @RequirePermission('businesses.delete')
   async deleteBusiness(@Param('businessId') businessId: string, @Req() req: AuthRequest) {
     return throwIfNotOk(await deleteAdminBusiness(businessId, await adminCtx(req)));
+  }
+
+  @Get('vehicles/:vehicleId')
+  @RequirePermission('owners.fleet')
+  async vehicleDetail(@Param('vehicleId') vehicleId: string) {
+    return throwIfNotOk(await getAdminVehicleDetail(vehicleId));
+  }
+
+  @Post('vehicles/:vehicleId/approve')
+  @RequirePermission('owners.approve')
+  async approveVehicle(@Param('vehicleId') vehicleId: string, @Req() req: AuthRequest) {
+    return throwIfNotOk(await approveAdminVehicle(vehicleId, await adminCtx(req)));
+  }
+
+  @Post('vehicles/:vehicleId/reject')
+  @RequirePermission('owners.approve')
+  async rejectVehicle(
+    @Param('vehicleId') vehicleId: string,
+    @Body() body: unknown,
+    @Req() req: AuthRequest
+  ) {
+    const reason = (body as { reason?: string })?.reason;
+    return throwIfNotOk(await rejectAdminVehicle(vehicleId, reason, await adminCtx(req)));
+  }
+
+  @Post('vehicles/:vehicleId/suspend')
+  @RequirePermission('owners.approve')
+  async suspendVehicle(@Param('vehicleId') vehicleId: string, @Req() req: AuthRequest) {
+    return throwIfNotOk(await suspendAdminVehicle(vehicleId, await adminCtx(req)));
+  }
+
+  @Post('vehicles/:vehicleId/reactivate')
+  @RequirePermission('owners.approve')
+  async reactivateVehicle(@Param('vehicleId') vehicleId: string, @Req() req: AuthRequest) {
+    return throwIfNotOk(await reactivateAdminVehicle(vehicleId, await adminCtx(req)));
+  }
+
+  @Delete('vehicles/:vehicleId')
+  @RequirePermission('owners.delete')
+  async deleteVehicle(@Param('vehicleId') vehicleId: string, @Req() req: AuthRequest) {
+    return throwIfNotOk(await deleteAdminVehicle(vehicleId, await adminCtx(req)));
   }
 }

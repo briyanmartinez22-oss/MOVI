@@ -16,6 +16,8 @@ import { resolveCurrentProfiles } from '../../src/services/profileCache';
 import { getOwnerByUserId } from '../../src/services/profileData';
 import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
 import { SpecialCaseType } from '../../src/types/models';
+import { normalizePhone } from '../../src/utils/platform';
+import { consumeRegistrationPassword } from '../../src/services/registrationPasswordDraft';
 import { colors, typography, spacing } from '../../src/theme';
 
 const DOC_FIELDS_BY_TYPE = {
@@ -30,13 +32,14 @@ const DOC_FIELDS_BY_TYPE = {
 };
 
 export default function RegisterOwnerScreen() {
-  const { phone, dui: duiParam, verified, action, consented, name: nameParam } = useLocalSearchParams<{
+  const { phone, dui: duiParam, verified, action, consented, name: nameParam, password: passwordParam } = useLocalSearchParams<{
     phone: string;
     dui: string;
     verified?: string;
     action?: string;
     consented?: string;
     name?: string;
+    password?: string;
   }>();
   const router = useRouter();
   const { user, refresh, registerOwner } = useAuth();
@@ -59,11 +62,18 @@ export default function RegisterOwnerScreen() {
   const submitRegister = async () => {
     setError('');
     await run(async () => {
+      const resolvedPassword =
+        passwordParam?.trim() || (await consumeRegistrationPassword(phone ?? ''));
+      if (!resolvedPassword) {
+        setError('Falta la contraseña. Repite el flujo desde OTP.');
+        return;
+      }
       const res = await registerOwner(
-        phone ?? '',
+        normalizePhone(phone ?? ''),
         firstName.trim(),
         lastName.trim(),
         duiParam ?? '',
+        resolvedPassword,
         email.trim() || undefined,
         documentType
       );

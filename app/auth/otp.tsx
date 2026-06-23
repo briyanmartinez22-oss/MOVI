@@ -35,6 +35,8 @@ export default function OtpScreen() {
     businessPhone,
     nit,
     businessType,
+    licenseFront,
+    licenseBack,
   } = useLocalSearchParams<{
     phone: string;
     flow?: string;
@@ -51,23 +53,27 @@ export default function OtpScreen() {
     businessPhone?: string;
     nit?: string;
     businessType?: string;
+    licenseFront?: string;
+    licenseBack?: string;
   }>();
   const postOtpRoute = returnRoute ?? next;
-  const { verifyOtp, login, refresh } = useAuth();
+  const { verifyOtp, loginWithOtpAdmin } = useAuth();
   const [otpCode, setOtpCode] = useState('');
   const [dui, setDui] = useState(duiParam ?? '');
   const [otpVerified, setOtpVerified] = useState(false);
-  const [isNewUser, setIsNewUser] = useState(false);
-  const [needsDuiLogin, setNeedsDuiLogin] = useState(false);
   const [error, setError] = useState('');
   const { loading, timedOut, run, retry } = useAsyncAction(15000);
 
-  const isLoginFlow = flow !== 'register';
+  const isRegisterFlow = flow === 'register' || (!flow && Boolean(postOtpRoute));
+  const isAdminFlow = flow === 'admin-login';
+  const isResetFlow = flow === 'reset-password';
+  const isSetPasswordFlow = flow === 'set-password';
 
   const forwardAfterOtp = (): Record<string, string> => {
     const params: Record<string, string> = {
       phone: phone ?? '',
       verified: '1',
+      code: otpCode,
     };
     if (duiParam) params.dui = duiParam;
     if (firstName) params.firstName = firstName;
@@ -80,19 +86,9 @@ export default function OtpScreen() {
     if (businessPhone) params.businessPhone = businessPhone;
     if (nit) params.nit = nit;
     if (businessType) params.businessType = businessType;
+    if (licenseFront) params.licenseFront = licenseFront;
+    if (licenseBack) params.licenseBack = licenseBack;
     return params;
-  };
-
-  const completeLogin = async (duiValue?: string) => {
-    const res = await login(phone ?? '', duiValue, otpCode);
-    if (res.ok) {
-      refresh();
-      const { user } = resolveCurrentProfiles();
-      showSuccess('Sesión iniciada', `Bienvenido${user ? `, ${user.fullName}` : ''}.`);
-      router.replace(user ? (getRoleHomeRoute(user.role) as never) : '/welcome');
-    } else {
-      setError(res.error ?? 'Error al iniciar sesión');
-    }
   };
 
   const handleVerifyOtp = async () => {
@@ -103,63 +99,70 @@ export default function OtpScreen() {
         setError(verify.error ?? 'Código inválido');
         return;
       }
-      setIsNewUser(!!verify.isNewUser);
       setOtpVerified(true);
 
-      if (verify.isNewUser) {
-        if (isLoginFlow) {
-          setError('No encontramos una cuenta. Crea una cuenta para continuar.');
+      if (isAdminFlow) {
+        if (!dui.trim()) {
+          setError('Ingresa tu DUI administrativo');
           return;
         }
-        if (postOtpRoute) {
-          const params = forwardAfterOtp();
-          if (postOtpRoute === '/auth/register-passenger') {
-            params.action = action ?? 'create';
-            params.consented = '1';
-          }
-          router.replace({
-            pathname: postOtpRoute as never,
-            params,
-          });
+        const login = await loginWithOtpAdmin(phone ?? '', dui, otpCode);
+        if (login.ok) {
+          showSuccess('Sesión administrativa', 'Acceso concedido.');
+          router.replace('/admin');
         } else {
-          router.replace({ pathname: '/auth/register-account', params: { phone } });
+          setError(login.error ?? 'Error al iniciar sesión');
         }
         return;
       }
 
-      if (!isLoginFlow) {
+      if (isResetFlow) {
+        router.replace({
+          pathname: '/auth/create-password',
+          params: { phone: phone ?? '', flow: 'reset', code: otpCode },
+        });
         return;
       }
 
-      if (verify.existingRole === 'passenger') {
-        await completeLogin();
+      if (isSetPasswordFlow) {
+        router.replace({
+          pathname: '/auth/create-password',
+          params: { phone: phone ?? '', flow: 'set', code: otpCode },
+        });
         return;
       }
 
-      setNeedsDuiLogin(true);
+      if (isRegisterFlow) {
+        if (verify.isNewUser === false && postOtpRoute) {
+          // Registro con teléfono ya usado — dejar que el backend rechace
+        }
+        router.replace({
+          pathname: '/auth/create-password',
+          params: {
+            ...forwardAfterOtp(),
+            flow: 'register',
+            returnRoute: postOtpRoute ?? '/auth/register-passenger',
+          },
+        });
+        return;
+      }
+
+      router.replace({
+        pathname: '/auth/create-password',
+        params: forwardAfterOtp(),
+      });
     });
   };
 
-  const handleLoginWithDui = async () => {
-    if (!dui.trim()) {
-      setError('Ingresa tu DUI');
-      return;
-    }
-    setError('');
-    await run(async () => {
-      await completeLogin(dui);
-    });
-  };
-
-  const showDuiStep = otpVerified && !isNewUser && needsDuiLogin;
+  const showDuiStep = isAdminFlow && otpVerified;
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScreenHeader title={showDuiStep ? 'Verificar DUI' : 'Verificación OTP'} />
+      <ScreenHeader title={isAdminFlow ? 'OTP administrador' : 'Verificación OTP'} />
       <KeyboardAwareScreen scroll contentContainerStyle={styles.content}>
         <MoviLogo size="md" style={styles.logo} />
         <Text style={styles.subtitle}>
-          {showDuiStep
+          {isAdminFlow && showDuiStep
             ? 'Confirma tu identidad con tu DUI'
             : `Código enviado a ${phone}`}
         </Text>
@@ -175,34 +178,23 @@ export default function OtpScreen() {
               keyboardType="numeric"
               hint={FIELD_HINTS.otp}
             />
+            {isAdminFlow ? (
+              <FormInput
+                label="DUI"
+                value={dui}
+                onChangeText={setDui}
+                placeholder="00000000-0"
+                hint={FIELD_HINTS.dui}
+              />
+            ) : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <PrimaryButton title="Verificar" onPress={handleVerifyOtp} loading={loading} />
             {isDevDiagnosticsEnabled() ? (
               <Text style={styles.demo}>Demo OTP: {DEMO_OTP_CODE}</Text>
             ) : null}
-            {error.includes('Crea una cuenta') ? (
-              <PrimaryButton
-                title="Crear cuenta"
-                onPress={() => router.replace('/auth/register-account')}
-                variant="outline"
-                style={styles.secondaryBtn}
-              />
-            ) : null}
             <ContextualHelpLink sectionId="otp-guide" />
           </>
-        ) : (
-          <>
-            <FormInput
-              label="DUI"
-              value={dui}
-              onChangeText={setDui}
-              placeholder="01234567-8"
-              hint={FIELD_HINTS.dui}
-            />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <PrimaryButton title="Iniciar sesión" onPress={handleLoginWithDui} loading={loading} />
-          </>
-        )}
+        ) : null}
       </KeyboardAwareScreen>
     </SafeAreaView>
   );
@@ -215,5 +207,4 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.lg, textAlign: 'center', width: '100%' },
   error: { ...typography.caption, color: colors.danger, marginBottom: spacing.md },
   demo: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: spacing.lg },
-  secondaryBtn: { marginTop: spacing.md },
 });

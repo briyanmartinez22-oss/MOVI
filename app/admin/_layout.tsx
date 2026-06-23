@@ -25,6 +25,8 @@ export default function AdminLayout() {
             <Stack.Screen name="passengers" />
             <Stack.Screen name="ratings" />
             <Stack.Screen name="owners" />
+            <Stack.Screen name="vehicles" />
+            <Stack.Screen name="vehicles/[vehicleId]" />
             <Stack.Screen name="vehicle-invites" />
             <Stack.Screen name="businesses" />
             <Stack.Screen name="deliveries" />

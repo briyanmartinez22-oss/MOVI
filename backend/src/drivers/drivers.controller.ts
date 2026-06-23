@@ -71,6 +71,7 @@ export class DriversController {
         code: z.string().min(4),
         licenseFront: z.string().min(1),
         licenseBack: z.string().min(1),
+        password: z.string().min(8),
       })
       .safeParse(body);
     if (!parsed.success) {
@@ -86,6 +87,7 @@ export class DriversController {
       code: parsed.data.code,
       licenseFront: parsed.data.licenseFront,
       licenseBack: parsed.data.licenseBack,
+      password: parsed.data.password,
     });
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Registro fallido', HttpStatus.BAD_REQUEST);

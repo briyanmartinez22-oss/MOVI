@@ -14,7 +14,8 @@ import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { navigateToRegistrationPermissions } from '../../src/utils/registrationNavigation';
 import { hasPermissionsAccepted } from '../../src/services/permissionsFlowService';
 import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink';
-import { isValidMoviPhone } from '../../src/utils/platform';
+import { isValidMoviPhone, normalizePhone } from '../../src/utils/platform';
+import { consumeRegistrationPassword } from '../../src/services/registrationPasswordDraft';
 import { colors, spacing, typography } from '../../src/theme';
 
 export default function RegisterPassengerScreen() {
@@ -26,6 +27,7 @@ export default function RegisterPassengerScreen() {
     firstName: firstNameParam,
     lastName: lastNameParam,
     consented,
+    password: passwordParam,
   } = useLocalSearchParams<{
     phone: string;
     verified?: string;
@@ -33,6 +35,7 @@ export default function RegisterPassengerScreen() {
     firstName?: string;
     lastName?: string;
     consented?: string;
+    password?: string;
   }>();
   const { registerPassenger, requestOtp } = useAuth();
   const [firstName, setFirstName] = useState(firstNameParam ?? '');
@@ -70,6 +73,7 @@ export default function RegisterPassengerScreen() {
       setError('Ingresa un teléfono válido (+503 o +1)');
       return;
     }
+    const normalizedPhone = normalizePhone(phone);
     const consentError = validateRegistrationConsent({ termsAccepted, privacyAccepted });
     if (consentError) {
       setError(consentError);
@@ -86,7 +90,7 @@ export default function RegisterPassengerScreen() {
     const forward = registrationParams();
 
     if (await hasPermissionsAccepted('passenger_register')) {
-      const otpRes = await requestOtp(phone);
+      const otpRes = await requestOtp(normalizedPhone);
       if (!otpRes.ok) {
         setError(otpRes.error ?? 'No se pudo enviar el OTP');
         return;
@@ -103,10 +107,16 @@ export default function RegisterPassengerScreen() {
   };
 
   const handleCreateAccount = async () => {
+    const resolvedPassword =
+      passwordParam?.trim() || (await consumeRegistrationPassword(phone));
+    if (!resolvedPassword) {
+      setError('Falta la contraseña. Repite el flujo desde OTP.');
+      return;
+    }
     setError('');
     await run(async () => {
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
-      const res = await registerPassenger(phone, fullName);
+      const res = await registerPassenger(normalizePhone(phone), fullName, resolvedPassword);
       if (res.ok) {
         showSuccess('¡Bienvenido!', 'Tu cuenta de pasajero fue creada.');
         router.replace('/passenger');

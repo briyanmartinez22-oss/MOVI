@@ -15,6 +15,7 @@ const suites = [
   { name: 'backend-build', cmd: 'npm', args: ['run', 'build'], cwd: join(dir, '..') },
   { name: 'qa:integrations', cmd: 'npm', args: ['run', 'qa:integrations'], cwd: join(dir, '..') },
   { name: 'qa:otp', cmd: 'npm', args: ['run', 'qa:otp'], cwd: join(dir, '..') },
+  { name: 'qa:auth', cmd: 'npm', args: ['run', 'qa:auth'], cwd: join(dir, '..') },
   { name: 'qa:maps', cmd: 'npm', args: ['run', 'qa:maps'], cwd: join(dir, '..') },
   { name: 'qa:push', cmd: 'npm', args: ['run', 'qa:push'], cwd: join(dir, '..') },
   { name: 'qa:admin-entities', cmd: 'npm', args: ['run', 'qa:admin-entities'], cwd: join(dir, '..') },

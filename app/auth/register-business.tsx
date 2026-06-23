@@ -38,6 +38,7 @@ export default function RegisterBusinessScreen() {
     businessPhone: bizPhoneParam,
     nit: nitParam,
     businessType: typeParam,
+    password,
   } = useLocalSearchParams<{
     phone: string;
     dui: string;
@@ -49,6 +50,7 @@ export default function RegisterBusinessScreen() {
     businessPhone?: string;
     nit?: string;
     businessType?: string;
+    password?: string;
   }>();
   const { refresh } = useAuth();
   const [responsibleName, setResponsibleName] = useState(nameParam ?? '');
@@ -81,6 +83,7 @@ export default function RegisterBusinessScreen() {
           latitude: place.coordinates.latitude,
           longitude: place.coordinates.longitude,
           addressLabel: place.name,
+          password,
         }
       );
       if (res.ok) {

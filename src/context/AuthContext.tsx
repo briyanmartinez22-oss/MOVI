@@ -28,15 +28,21 @@ interface AuthContextValue {
   requestOtp: (phone: string) => Promise<{ ok: boolean; error?: string }>;
   verifyOtp: (phone: string, code: string) => Promise<{ ok: boolean; isNewUser?: boolean; existingRole?: string | null; error?: string }>;
   login: (phone: string, dui: string | undefined, code: string) => Promise<{ ok: boolean; error?: string }>;
+  loginWithPassword: (phone: string, password: string) => Promise<{ ok: boolean; error?: string; code?: string; user?: AuthUser }>;
+  loginWithOtpAdmin: (phone: string, dui: string, code: string) => Promise<{ ok: boolean; error?: string }>;
+  forgotPassword: (phone: string) => Promise<{ ok: boolean; error?: string }>;
+  resetPassword: (phone: string, code: string, password: string, confirmPassword: string) => Promise<{ ok: boolean; error?: string }>;
+  setInitialPassword: (phone: string, code: string, password: string, confirmPassword: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => void;
   bootstrap: () => Promise<void>;
-  registerPassenger: (phone: string, fullName: string) => Promise<{ ok: boolean; error?: string }>;
+  registerPassenger: (phone: string, fullName: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   registerOwner: (
     phone: string,
     firstName: string,
     lastName: string,
     dui: string,
+    password: string,
     email?: string,
     documentType?: 'DUI' | 'LICENSE'
   ) => Promise<{ ok: boolean; error?: string }>;
@@ -49,6 +55,7 @@ interface AuthContextValue {
     code: string;
     licenseFront: string;
     licenseBack: string;
+    password: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   getDailySessionSummary: (driverId: string) => DailySessionSummary;
   getAllDriverSessions: (driverId: string) => DriverSession[];
@@ -130,13 +137,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: false, error: res.error };
   }, []);
 
+  const loginWithPassword = useCallback(async (phone: string, password: string) => {
+    const res = await api.loginWithPassword(phone, password);
+    if (res.ok && res.data) {
+      setUser(res.data);
+      if (!useMockApi()) await refreshProfilesFromApi();
+      return { ok: true, user: res.data };
+    }
+    return { ok: false, error: res.error, code: res.code };
+  }, []);
+
+  const loginWithOtpAdmin = useCallback(async (phone: string, dui: string, code: string) => {
+    const res = await api.loginWithOtpAdmin(phone, dui, code);
+    if (res.ok && res.data) {
+      setUser(res.data);
+      if (!useMockApi()) await refreshProfilesFromApi();
+      return { ok: true };
+    }
+    return { ok: false, error: res.error };
+  }, []);
+
+  const forgotPassword = useCallback(async (phone: string) => {
+    const res = await api.forgotPassword(phone);
+    return res.ok ? { ok: true } : { ok: false, error: res.error };
+  }, []);
+
+  const resetPassword = useCallback(
+    async (phone: string, code: string, password: string, confirmPassword: string) => {
+      const res = await api.resetPassword(phone, code, password, confirmPassword);
+      return res.ok ? { ok: true } : { ok: false, error: res.error };
+    },
+    []
+  );
+
+  const setInitialPassword = useCallback(
+    async (phone: string, code: string, password: string, confirmPassword: string) => {
+      const res = await api.setInitialPassword(phone, code, password, confirmPassword);
+      if (res.ok && res.data) {
+        setUser(res.data);
+        if (!useMockApi()) await refreshProfilesFromApi();
+        return { ok: true };
+      }
+      return { ok: false, error: res.error };
+    },
+    []
+  );
+
   const logout = useCallback(async () => {
     await authService.logout();
     setUser(null);
   }, []);
 
-  const registerPassenger = useCallback(async (phone: string, fullName: string) => {
-    const res = await api.registerPassenger(phone, fullName);
+  const registerPassenger = useCallback(async (phone: string, fullName: string, password: string) => {
+    const res = await api.registerPassenger(phone, fullName, password);
     if (res.ok && res.data) {
       setUser(res.data);
       return { ok: true };
@@ -150,10 +203,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       firstName: string,
       lastName: string,
       dui: string,
+      password: string,
       email?: string,
       documentType?: 'DUI' | 'LICENSE'
     ) => {
-      const res = await api.registerOwner(phone, firstName, lastName, dui, email, documentType);
+      const res = await api.registerOwner(phone, firstName, lastName, dui, password, email, documentType);
       if (res.ok && res.data) {
         setUser(res.data.user);
         return { ok: true };
@@ -173,6 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       code: string;
       licenseFront: string;
       licenseBack: string;
+      password: string;
     }) => {
       const res = await api.registerDriverWithInvite(input);
       if (res.ok && res.data) {
@@ -225,6 +280,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestOtp,
       verifyOtp,
       login,
+      loginWithPassword,
+      loginWithOtpAdmin,
+      forgotPassword,
+      resetPassword,
+      setInitialPassword,
       logout,
       refresh,
       bootstrap,
@@ -240,6 +300,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestOtp,
       verifyOtp,
       login,
+      loginWithPassword,
+      loginWithOtpAdmin,
+      forgotPassword,
+      resetPassword,
+      setInitialPassword,
       logout,
       refresh,
       bootstrap,

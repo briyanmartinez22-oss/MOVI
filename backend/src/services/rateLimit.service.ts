@@ -1,5 +1,12 @@
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
+export function isRateLimited(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const bucket = buckets.get(key);
+  if (!bucket || bucket.resetAt <= now) return false;
+  return bucket.count >= max;
+}
+
 export function checkRateLimit(key: string, max: number, windowMs: number): boolean {
   const now = Date.now();
   const bucket = buckets.get(key);

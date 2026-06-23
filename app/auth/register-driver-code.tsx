@@ -14,6 +14,8 @@ import { fetchInvitePreview, getInvitePreview } from '../../src/services/mockApi
 import { useAsyncAction } from '../../src/utils/asyncAction';
 import { showSuccess } from '../../src/utils/feedback';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
+import { normalizePhone } from '../../src/utils/platform';
+import { consumeRegistrationPassword } from '../../src/services/registrationPasswordDraft';
 import { colors, typography, spacing } from '../../src/theme';
 
 const INVITE_ERROR_LABELS: Record<string, string> = {
@@ -40,7 +42,7 @@ type Step = 'code' | 'preview' | 'form';
 
 export default function RegisterDriverCodeScreen() {
   const router = useRouter();
-  const { phone, verified } = useLocalSearchParams<{ phone: string; verified?: string }>();
+  const { phone, verified, password: passwordParam } = useLocalSearchParams<{ phone: string; verified?: string; password?: string }>();
   const { registerDriverWithCode } = useAuth();
 
   const [step, setStep] = useState<Step>('code');
@@ -110,8 +112,14 @@ export default function RegisterDriverCodeScreen() {
     }
     setError('');
     await run(async () => {
+      const resolvedPassword =
+        passwordParam?.trim() || (await consumeRegistrationPassword(phone ?? ''));
+      if (!resolvedPassword) {
+        setError('Falta la contraseña. Repite el flujo desde OTP.');
+        return;
+      }
       const res = await registerDriverWithCode({
-        phone: phone ?? '',
+        phone: normalizePhone(phone ?? ''),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim() || undefined,
@@ -119,6 +127,7 @@ export default function RegisterDriverCodeScreen() {
         code: code.trim(),
         licenseFront,
         licenseBack,
+        password: resolvedPassword,
       });
       if (res.ok) {
         showSuccess('Registro enviado', 'Un administrador revisará tu licencia antes de activarte.');

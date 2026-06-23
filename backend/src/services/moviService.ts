@@ -13,7 +13,8 @@ import {
   stringifyJsonField,
   toAuthUser,
 } from '../utils/normalize';
-import { assertOtpValidForLogin, assertPhoneVerifiedForRegistration, consumeVerifiedOtp } from './otpService';
+import { assertPhoneVerifiedForRegistration, consumeVerifiedOtp } from './otpService';
+import { validatePasswordStrength, hashPassword } from './password.service';
 import { canDriverOperate } from './subscription.service';
 import { recordDriverLocation } from './providerEligibility.service';
 import { assignUserRole } from './users.service';
@@ -47,51 +48,24 @@ async function createDriverSubscription(driverId: string, registeredAt = new Dat
   });
 }
 
-export async function loginWithOtp(phone: string, dui: string | undefined, code: string) {
-  const verify = await assertOtpValidForLogin(phone, code);
-  if (!verify.ok) return verify;
-
-  const phoneNumber = normalizePhone(phone);
-  const user = await findUserByPhone(phone);
-
-  if (!user) {
-    return { ok: false as const, error: 'Usuario no registrado. Completa el registro.' };
-  }
-
-  if (user.accountStatus === 'suspended') {
-    return { ok: false as const, error: 'Tu cuenta está suspendida. Contacta soporte.' };
-  }
-
-  if (user.role !== 'passenger') {
-    if (!dui?.trim()) {
-      return { ok: false as const, error: 'El DUI es requerido para este tipo de cuenta.' };
-    }
-    if (!user.duiNumber || !duiMatches(user.duiNumber, dui)) {
-      return { ok: false as const, error: 'El DUI no coincide con el registrado.' };
-    }
-  } else if (dui?.trim() && user.duiNumber && !duiMatches(user.duiNumber, dui)) {
-    return { ok: false as const, error: 'El DUI no coincide con el registrado.' };
-  }
-
-  const updated = await prisma.user.update({
-    where: { id: user.id },
-    data: { phoneVerified: true },
-  });
-
-  const authUser = toAuthUser(updated);
-  if (updated.role === 'admin') {
-    const { getAdminStaffRole } = await import('./admin-staff.service');
-    const enriched = { ...authUser, staffRole: await getAdminStaffRole(updated.id) };
-    const tokens = await issueAuthBundle(updated.id, updated.role);
-    return { ok: true as const, user: enriched, ...tokens };
-  }
-  const tokens = await issueAuthBundle(updated.id, updated.role);
-  return { ok: true as const, user: authUser, ...tokens };
+async function resolveRegistrationPassword(password: string) {
+  const error = validatePasswordStrength(password);
+  if (error) return { ok: false as const, error };
+  const passwordHash = await hashPassword(password);
+  return { ok: true as const, passwordHash };
 }
 
-export async function registerPassenger(phone: string, fullName: string) {
+export async function loginWithOtp(phone: string, dui: string | undefined, code: string) {
+  const { loginWithOtpAdmin } = await import('./auth.service');
+  return loginWithOtpAdmin(phone, dui, code);
+}
+
+export async function registerPassenger(phone: string, fullName: string, password: string) {
   const otpCheck = await assertPhoneVerifiedForRegistration(phone);
   if (!otpCheck.ok) return otpCheck;
+
+  const pwCheck = await resolveRegistrationPassword(password);
+  if (!pwCheck.ok) return pwCheck;
 
   const phoneNumber = normalizePhone(phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
@@ -104,6 +78,8 @@ export async function registerPassenger(phone: string, fullName: string) {
       duiNumber: null,
       role: 'passenger',
       phoneVerified: true,
+      passwordHash: pwCheck.passwordHash,
+      passwordSetAt: new Date(),
     },
   });
 
@@ -120,11 +96,15 @@ export async function registerOwner(
   firstName: string,
   lastName: string,
   dui: string,
+  password: string,
   email?: string,
   documentType?: 'DUI' | 'LICENSE'
 ) {
   const otpCheck = await assertPhoneVerifiedForRegistration(phone);
   if (!otpCheck.ok) return otpCheck;
+
+  const pwCheck = await resolveRegistrationPassword(password);
+  if (!pwCheck.ok) return pwCheck;
 
   const phoneNumber = normalizePhone(phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
@@ -140,6 +120,8 @@ export async function registerOwner(
       duiNumber: normalizeDui(dui),
       role: 'owner',
       phoneVerified: true,
+      passwordHash: pwCheck.passwordHash,
+      passwordSetAt: new Date(),
       owner: {
         create: {
           firstName: firstName.trim(),
@@ -176,6 +158,7 @@ export async function registerBusiness(
   phone: string,
   fullName: string,
   dui: string,
+  password: string,
   data: {
     businessName: string;
     businessType: string;
@@ -189,6 +172,9 @@ export async function registerBusiness(
   const otpCheck = await assertPhoneVerifiedForRegistration(phone);
   if (!otpCheck.ok) return otpCheck;
 
+  const pwCheck = await resolveRegistrationPassword(password);
+  if (!pwCheck.ok) return pwCheck;
+
   const phoneNumber = normalizePhone(phone);
   const existing = await prisma.user.findUnique({ where: { phoneNumber } });
   if (existing) return { ok: false as const, error: 'Este teléfono ya está registrado.' };
@@ -200,6 +186,8 @@ export async function registerBusiness(
       duiNumber: normalizeDui(dui),
       role: 'business',
       phoneVerified: true,
+      passwordHash: pwCheck.passwordHash,
+      passwordSetAt: new Date(),
       business: {
         create: {
           businessName: data.businessName,
@@ -365,9 +353,13 @@ export async function registerDriverWithInvite(input: {
   code: string;
   licenseFront?: string;
   licenseBack?: string;
+  password: string;
 }) {
   const otpCheck = await assertPhoneVerifiedForRegistration(input.phone);
   if (!otpCheck.ok) return otpCheck;
+
+  const pwCheck = await resolveRegistrationPassword(input.password);
+  if (!pwCheck.ok) return pwCheck;
 
   if (!input.licenseFront || !input.licenseBack) {
     return { ok: false as const, error: 'Licencia de conducir (frontal y trasera) es obligatoria.' };
@@ -394,6 +386,8 @@ export async function registerDriverWithInvite(input: {
       email: input.email?.trim() || null,
       role: 'driver',
       phoneVerified: true,
+      passwordHash: pwCheck.passwordHash,
+      passwordSetAt: new Date(),
       driver: {
         create: {
           id: driverPublicId,
@@ -675,21 +669,52 @@ export async function submitVehicleVerification(vehicleId: string, requestingOwn
     return { ok: false as const, error: 'No autorizado para esta unidad.' };
   }
 
+  const docs = parseJsonField<Record<string, string>>(vehicle.documentsJson, {});
+  const missingCritical: string[] = [];
+  if (!docs.registrationCardImage && !vehicle.registrationCard) {
+    missingCritical.push('tarjeta de circulación');
+  }
+
+  if (missingCritical.length > 0) {
+    await prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: {
+        status: 'incomplete',
+        rejectReason: `Faltan documentos: ${missingCritical.join(', ')}`,
+        autoRejected: false,
+      },
+    });
+    return {
+      ok: false as const,
+      error: `Completa los documentos obligatorios (${missingCritical.join(', ')}) antes de enviar a revisión.`,
+    };
+  }
+
   const regName = vehicle.registrationName ?? '';
   if (regName && !namesMatch(vehicle.owner.name, regName)) {
     await prisma.vehicle.update({
       where: { id: vehicleId },
-      data: { status: 'rejected' },
+      data: {
+        status: 'incomplete',
+        rejectReason:
+          'El nombre en la tarjeta de circulación no coincide con el DUI del dueño. Revisa los datos o contacta soporte.',
+        autoRejected: false,
+      },
     });
     return {
       ok: false as const,
-      error: 'Nombre en tarjeta de circulación no coincide con el DUI. Unidad rechazada.',
+      error:
+        'El nombre en tarjeta de circulación no coincide con el registrado. Corrige los datos y vuelve a enviar.',
     };
   }
 
   const updated = await prisma.vehicle.update({
     where: { id: vehicleId },
-    data: { status: 'under_review' },
+    data: {
+      status: 'under_review',
+      rejectReason: null,
+      autoRejected: false,
+    },
   });
 
   return {

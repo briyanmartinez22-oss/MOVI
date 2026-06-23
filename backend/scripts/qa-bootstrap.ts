@@ -2,7 +2,7 @@
  * Crea entidades efímeras para scripts QA (post db:reset-beta).
  */
 import { req, OTP } from './admin-qa-auth';
-import { driverInviteRegisterPayload, ownerRegisterPayload } from './qa-registration';
+import { driverInviteRegisterPayload, ownerRegisterPayload, QA_PASSWORD, loginWithPassword } from './qa-registration';
 
 function place(name: string, lat: number, lng: number) {
   return {
@@ -16,12 +16,13 @@ export async function registerPassenger(fullName = 'QA Bootstrap Passenger') {
   const phone = `79${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone });
   await req('/auth/verify-otp', { phone, code: OTP });
-  const reg = await req('/passengers/register', { phone, fullName });
+  const reg = await req('/passengers/register', { phone, fullName, password: QA_PASSWORD });
   if (!reg.json.ok) throw new Error(reg.json.error ?? 'passenger register failed');
   return {
     id: reg.json.data?.user?.id as string,
     token: reg.json.data?.authToken as string,
     phone,
+    password: QA_PASSWORD,
   };
 }
 
@@ -57,6 +58,7 @@ export async function registerBusiness(fullName = 'QA Bootstrap Business') {
     latitude: lat,
     longitude: lng,
     addressLabel: 'Centro',
+    password: QA_PASSWORD,
   });
   if (!reg.json.ok) throw new Error(reg.json.error ?? 'business register failed');
   return {

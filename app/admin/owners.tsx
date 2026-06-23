@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AdminModulePage } from '../../src/components/admin/AdminModulePage';
 import { AdminEntityCard, type EntityAction } from '../../src/components/admin/AdminEntityCard';
@@ -9,6 +10,7 @@ import {
   reactivateOwner,
   rejectOwner,
   suspendOwner,
+  triggerOwnerPasswordReset,
 } from '../../src/services/api';
 import { useAdminEntityActions } from '../../src/hooks/useAdminEntityActions';
 
@@ -19,10 +21,11 @@ type Owner = {
   mvpStatus: string;
   vehicleCount: number;
   driverCount: number;
+  hasPasswordHash?: boolean;
 };
 
 function ownerActions(o: Owner): EntityAction[] {
-  const actions: EntityAction[] = [];
+  const actions: EntityAction[] = ['resetPassword'];
   if (o.mvpStatus !== 'VERIFIED' && o.mvpStatus !== 'SUSPENDED') {
     actions.push('approve', 'reject');
   }
@@ -55,6 +58,17 @@ export default function AdminOwnersScreen() {
     if (action === 'reject') return rejectOwner(id);
     if (action === 'suspend') return suspendOwner(id);
     if (action === 'reactivate') return reactivateOwner(id);
+    if (action === 'resetPassword') {
+      const res = await triggerOwnerPasswordReset(id);
+      if (res.ok && res.data) {
+        const data = res.data as { message?: string };
+        Alert.alert(
+          'OTP enviado',
+          data.message ?? 'El dueño recibirá un código para crear o restablecer su contraseña.'
+        );
+      }
+      return res;
+    }
     if (action === 'delete') return deleteOwner(id);
     return { ok: false, error: 'Acción no soportada' };
   }, []);
@@ -77,6 +91,7 @@ export default function AdminOwnersScreen() {
             mvpStatus={o.mvpStatus}
             lines={[
               o.phone,
+              `Contraseña: ${o.hasPasswordHash ? 'configurada' : 'pendiente (OTP)'}`,
               `Vehículos: ${o.vehicleCount} · Conductores: ${o.driverCount}`,
             ]}
             actions={ownerActions(o)}
