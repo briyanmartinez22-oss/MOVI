@@ -4,7 +4,7 @@
  * Usage: npm run qa:admin-entities
  */
 import { loginAsSuperAdmin, req } from './admin-qa-auth';
-import { ensureQaFixtures } from './qa-bootstrap';
+import { ensureQaFixtures, isProductionApiUrl } from './qa-bootstrap';
 
 type StepResult = { step: string; status: 'PASS' | 'FAIL'; detail?: string };
 const results: StepResult[] = [];
@@ -29,7 +29,15 @@ async function run() {
   let businessList = businesses.json.data?.businesses ?? [];
 
   if (!passengerList.length || !driverList.length || !ownerList.length || !businessList.length) {
-    await ensureQaFixtures(token);
+    if (isProductionApiUrl()) {
+      record(
+        'Bootstrap QA fixtures',
+        false,
+        'Refusing to create QA Bootstrap users on production API. Run db:reset-beta on prod first.'
+      );
+    } else {
+      await ensureQaFixtures(token);
+    }
     passengers = await req('/admin/passengers', undefined, token);
     passengerList = passengers.json.data?.passengers ?? [];
     drivers = await req('/admin/drivers', undefined, token);

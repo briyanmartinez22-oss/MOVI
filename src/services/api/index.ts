@@ -68,7 +68,10 @@ async function persistAuthResponse(
 export async function requestOtp(phone: string): Promise<ApiResponse<{ sent: boolean }>> {
   if (useMockApi()) return mock.requestOtp(phone);
   const res = await apiPost<{ sent: boolean }>('/auth/request-otp', { phone: authPhone(phone) }, { auth: false });
-  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al enviar OTP');
+  if (!res.ok || !res.data?.sent) {
+    return fail(res.error ?? 'No se pudo enviar OTP');
+  }
+  return ok({ sent: true });
 }
 
 export async function verifyOtp(
@@ -92,7 +95,7 @@ export async function loginWithOtp(
   if (useMockApi()) return mock.loginWithOtp(phone, dui, code);
   const res = await apiPost<{ user: AuthUser; authToken: string; refreshToken?: string }>(
     '/auth/login',
-    { phone, dui, code },
+    { phone: authPhone(phone), dui, code },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al iniciar sesión');
@@ -125,7 +128,7 @@ export async function loginWithOtpAdmin(
   if (useMockApi()) return mock.loginWithOtp(phone, dui, code);
   const res = await apiPost<{ user: AuthUser; authToken: string; refreshToken?: string }>(
     '/auth/login',
-    { phone, dui, code },
+    { phone: authPhone(phone), dui, code },
     { auth: false }
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al iniciar sesión');

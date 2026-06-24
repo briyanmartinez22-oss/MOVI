@@ -182,6 +182,13 @@ export async function consumeVerifiedOtp(phone: string) {
 
 export async function assertOtpValidForLogin(phone: string, code: string) {
   const phoneNumber = normalizePhone(phone);
+  if (env.nodeEnv === 'production' && code === env.demoOtpCode) {
+    return { ok: false as const, error: 'Código OTP inválido.' };
+  }
+  if (!env.demoOtpEnabled && code === env.demoOtpCode) {
+    return { ok: false as const, error: 'Código OTP inválido.' };
+  }
+
   const verifiedChallenge = await findActiveVerifiedChallenge(phoneNumber);
   if (verifiedChallenge) {
     return { ok: true as const };

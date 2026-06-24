@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { AdminConfirmModal } from '../components/admin/AdminConfirmModal';
 import type { EntityAction } from '../components/admin/AdminEntityCard';
+import { showSuccess } from '../utils/feedback';
 
 type ConfirmConfig = {
   title: string;
@@ -43,6 +44,15 @@ const CONFIRM_MESSAGES: Partial<Record<EntityAction, ConfirmConfig>> = {
   },
 };
 
+const SUCCESS_MESSAGES: Partial<Record<EntityAction, string>> = {
+  approve: 'Registro aprobado.',
+  reject: 'Registro rechazado.',
+  suspend: 'Registro suspendido.',
+  reactivate: 'Registro reactivado.',
+  resetPassword: 'OTP enviado al teléfono del dueño.',
+  delete: 'Registro eliminado.',
+};
+
 export function useAdminEntityActions(
   run: (action: EntityAction, id: string) => Promise<{ ok: boolean; error?: string }>,
   onSuccess: () => Promise<void> | void
@@ -67,6 +77,8 @@ export function useAdminEntityActions(
       return;
     }
     setPending(null);
+    const successMsg = SUCCESS_MESSAGES[pending.action];
+    if (successMsg) showSuccess('Listo', successMsg);
     await onSuccess();
   }, [pending, run, onSuccess]);
 

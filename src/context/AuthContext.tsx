@@ -117,7 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const requestOtp = useCallback(async (phone: string) => {
     const res = await api.requestOtp(phone);
-    return res.ok ? { ok: true } : { ok: false, error: res.error };
+    if (!res.ok || !res.data?.sent) {
+      return { ok: false, error: res.error ?? 'No se pudo enviar OTP' };
+    }
+    return { ok: true, sent: true };
   }, []);
 
   const verifyOtp = useCallback(async (phone: string, code: string) => {

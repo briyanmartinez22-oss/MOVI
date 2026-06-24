@@ -1,7 +1,27 @@
 /**
- * Crea entidades efímeras para scripts QA (post db:reset-beta).
+ * Crea entidades efímeras para scripts QA (solo local / CI — nunca producción).
  */
 import { req, OTP } from './admin-qa-auth';
+
+const API_URL = process.env.API_URL ?? 'http://localhost:3001';
+
+/** Bloquea bootstrap QA contra APIs remotas de producción. */
+export function isProductionApiUrl(url = API_URL): boolean {
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('railway.app') ||
+    lower.includes('movi-production') ||
+    (lower.startsWith('https://') && !lower.includes('localhost') && !lower.includes('127.0.0.1'))
+  );
+}
+
+function assertLocalQaOnly(action: string) {
+  if (isProductionApiUrl()) {
+    throw new Error(
+      `${action} blocked: API_URL=${API_URL} looks like production. Use localhost for QA bootstrap.`
+    );
+  }
+}
 import { driverInviteRegisterPayload, ownerRegisterPayload, QA_PASSWORD, loginWithPassword } from './qa-registration';
 
 function place(name: string, lat: number, lng: number) {
@@ -13,6 +33,7 @@ function place(name: string, lat: number, lng: number) {
 }
 
 export async function registerPassenger(fullName = 'QA Bootstrap Passenger') {
+  assertLocalQaOnly('registerPassenger');
   const phone = `79${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone });
   await req('/auth/verify-otp', { phone, code: OTP });
@@ -27,6 +48,7 @@ export async function registerPassenger(fullName = 'QA Bootstrap Passenger') {
 }
 
 export async function registerOwner(fullName = 'QA Bootstrap Owner') {
+  assertLocalQaOnly('registerOwner');
   const phone = `71${Date.now().toString().slice(-6)}`;
   await req('/auth/request-otp', { phone });
   await req('/auth/verify-otp', { phone, code: OTP });
@@ -43,6 +65,7 @@ export async function registerOwner(fullName = 'QA Bootstrap Owner') {
 }
 
 export async function registerBusiness(fullName = 'QA Bootstrap Business') {
+  assertLocalQaOnly('registerBusiness');
   const phone = `76${Date.now().toString().slice(-6)}`;
   const lat = 13.6929;
   const lng = -89.2182;
@@ -69,6 +92,7 @@ export async function registerBusiness(fullName = 'QA Bootstrap Business') {
 }
 
 export async function registerDriverWithVehicle(adminToken: string) {
+  assertLocalQaOnly('registerDriverWithVehicle');
   const owner = await registerOwner('QA Bootstrap Owner Driver');
   const plate = `Q${Date.now().toString().slice(-5)}`;
   const vehicle = await req(
@@ -126,6 +150,7 @@ export async function createRequestedTrip(passengerToken: string) {
 }
 
 export async function ensureQaFixtures(adminToken: string) {
+  assertLocalQaOnly('ensureQaFixtures');
   const passenger = await registerPassenger();
   const { driverId } = await registerDriverWithVehicle(adminToken);
   const owner = await registerOwner('QA Bootstrap Owner List');

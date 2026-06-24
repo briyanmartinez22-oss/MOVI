@@ -162,6 +162,7 @@ export async function listAdminRequests() {
 
 export async function listAdminOwners() {
   const owners = await prisma.owner.findMany({
+    where: { status: { not: 'deleted' } },
     include: { user: true, vehicles: true, drivers: true },
     orderBy: { createdAt: 'desc' },
     take: 200,

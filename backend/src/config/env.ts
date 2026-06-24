@@ -119,6 +119,14 @@ export function assertEnv() {
         'Production requires Twilio Verify (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID)'
       );
     }
+    if (process.env.DEMO_OTP_ENABLED === 'true') {
+      console.warn(
+        '[MOVI] DEMO_OTP_ENABLED=true is set but ignored in production (NODE_ENV=production).'
+      );
+    }
+    if (getResolvedOtpMode() === 'demo') {
+      throw new Error('Production cannot run with demo OTP provider');
+    }
   }
 }
 

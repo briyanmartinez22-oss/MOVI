@@ -3,7 +3,8 @@ export type MvpVerificationStatus =
   | 'PENDING_REVIEW'
   | 'VERIFIED'
   | 'REJECTED'
-  | 'SUSPENDED';
+  | 'SUSPENDED'
+  | 'DELETED';
 
 export type MvpSubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED';
 
@@ -15,6 +16,7 @@ const OWNER_MAP: Record<string, MvpVerificationStatus> = {
   approved: 'VERIFIED',
   rejected: 'REJECTED',
   suspended: 'SUSPENDED',
+  deleted: 'DELETED',
 };
 
 const VEHICLE_MAP: Record<string, MvpVerificationStatus> = {
@@ -52,6 +54,7 @@ export const MVP_STATUS_LABELS: Record<MvpVerificationStatus, string> = {
   VERIFIED: 'Verificado',
   REJECTED: 'Rechazado',
   SUSPENDED: 'Suspendido',
+  DELETED: 'Eliminado',
 };
 
 export function isVerified(status: MvpVerificationStatus): boolean {

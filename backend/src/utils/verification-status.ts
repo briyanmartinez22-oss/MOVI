@@ -5,7 +5,8 @@ export type MvpVerificationStatus =
   | 'PENDING_APPROVAL'
   | 'VERIFIED'
   | 'REJECTED'
-  | 'SUSPENDED';
+  | 'SUSPENDED'
+  | 'DELETED';
 
 const OWNER_MAP: Record<string, MvpVerificationStatus> = {
   pending: 'PENDING_DOCUMENTS',
@@ -15,6 +16,7 @@ const OWNER_MAP: Record<string, MvpVerificationStatus> = {
   approved: 'VERIFIED',
   rejected: 'REJECTED',
   suspended: 'SUSPENDED',
+  deleted: 'DELETED',
 };
 
 const VEHICLE_MAP: Record<string, MvpVerificationStatus> = {

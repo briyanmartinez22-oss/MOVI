@@ -60,13 +60,6 @@ export default function AdminOwnersScreen() {
     if (action === 'reactivate') return reactivateOwner(id);
     if (action === 'resetPassword') {
       const res = await triggerOwnerPasswordReset(id);
-      if (res.ok && res.data) {
-        const data = res.data as { message?: string };
-        Alert.alert(
-          'OTP enviado',
-          data.message ?? 'El dueño recibirá un código para crear o restablecer su contraseña.'
-        );
-      }
       return res;
     }
     if (action === 'delete') return deleteOwner(id);

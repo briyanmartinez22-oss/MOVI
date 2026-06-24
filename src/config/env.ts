@@ -41,6 +41,9 @@ export function getWsUrl(): string {
 
 /** When true, all API calls use in-memory mock store (offline demo). */
 export function useMockApi(): boolean {
+  const apiUrl = readPublicEnv('EXPO_PUBLIC_API_URL') ?? '';
+  if (/railway\.app/i.test(apiUrl)) return false;
+
   const explicit = readPublicEnv('EXPO_PUBLIC_USE_MOCK_API');
   if (explicit === 'true') return true;
   if (explicit === 'false') return false;

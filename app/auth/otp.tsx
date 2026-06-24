@@ -22,6 +22,7 @@ export default function OtpScreen() {
   const {
     phone,
     flow,
+    otpSent,
     returnRoute,
     next,
     dui: duiParam,
@@ -40,6 +41,7 @@ export default function OtpScreen() {
   } = useLocalSearchParams<{
     phone: string;
     flow?: string;
+    otpSent?: string;
     returnRoute?: string;
     next?: string;
     dui?: string;
@@ -66,6 +68,7 @@ export default function OtpScreen() {
 
   const isRegisterFlow = flow === 'register' || (!flow && Boolean(postOtpRoute));
   const isAdminFlow = flow === 'admin-login';
+  const adminOtpConfirmed = otpSent === '1';
   const isResetFlow = flow === 'reset-password';
   const isSetPasswordFlow = flow === 'set-password';
 
@@ -162,9 +165,13 @@ export default function OtpScreen() {
       <KeyboardAwareScreen scroll contentContainerStyle={styles.content}>
         <MoviLogo size="md" style={styles.logo} />
         <Text style={styles.subtitle}>
-          {isAdminFlow && showDuiStep
-            ? 'Confirma tu identidad con tu DUI'
-            : `Código enviado a ${phone}`}
+          {isAdminFlow && !adminOtpConfirmed
+            ? 'Solicita el código desde acceso administrador primero.'
+            : isAdminFlow && showDuiStep
+              ? 'Confirma tu identidad con tu DUI'
+              : adminOtpConfirmed || !isAdminFlow
+                ? `Código enviado a ${phone}`
+                : 'Ingresa el código recibido por SMS'}
         </Text>
         <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
 

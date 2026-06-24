@@ -12,6 +12,7 @@ import { ScreenHeader } from '../../src/components/FormUI';
 import { useAuth } from '../../src/context/AuthContext';
 import { useAsyncAction } from '../../src/utils/asyncAction';
 import { isValidMoviPhone, normalizePhone } from '../../src/utils/platform';
+import { showSuccess } from '../../src/utils/feedback';
 import { colors, typography, spacing } from '../../src/theme';
 
 /** Login administrativo — OTP + DUI (SUPER_ADMIN y staff). */
@@ -20,13 +21,13 @@ export default function AdminLoginScreen() {
   const { requestOtp } = useAuth();
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
-  const { loading, timedOut, run, retry } = useAsyncAction(15000);
+  const { loading, timedOut, run, retry } = useAsyncAction(20000);
 
   const phoneValid = isValidMoviPhone(phone);
 
   const handleContinue = async () => {
     if (!phoneValid) {
-      setError('Ingresa un teléfono válido');
+      setError('Ingresa un teléfono válido (+1 o +503)');
       return;
     }
     const normalized = normalizePhone(phone);
@@ -34,9 +35,10 @@ export default function AdminLoginScreen() {
     await run(async () => {
       const res = await requestOtp(normalized);
       if (res.ok) {
+        showSuccess('Código enviado', `Revisa SMS en ${normalized}`);
         router.push({
           pathname: '/auth/otp',
-          params: { phone: normalized, flow: 'admin-login' },
+          params: { phone: normalized, flow: 'admin-login', otpSent: '1' },
         });
       } else {
         setError(res.error ?? 'Error al enviar OTP');
@@ -51,7 +53,7 @@ export default function AdminLoginScreen() {
         <MoviLogo size="md" />
         <BrandTagline variant="secondary" />
         <Text style={styles.subtitle}>
-          Acceso restringido — verificación OTP para cuentas administrativas.
+          Acceso restringido — verificación OTP por SMS para cuentas administrativas.
         </Text>
         <LoadingTimeoutBanner visible={timedOut} onRetry={retry} />
         <FormInput

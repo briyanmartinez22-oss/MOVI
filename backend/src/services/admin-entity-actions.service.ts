@@ -477,19 +477,46 @@ export async function reactivateAdminOwner(ownerId: string, ctx: AdminContext) {
 export async function deleteAdminOwner(ownerId: string, ctx: AdminContext) {
   const owner = await prisma.owner.findUnique({ where: { id: ownerId } });
   if (!owner) return { ok: false as const, error: 'Propietario no encontrado' };
+  if (owner.status === 'deleted') {
+    return { ok: false as const, error: 'El propietario ya fue eliminado' };
+  }
 
-  const activeVehicles = await prisma.vehicle.count({
-    where: {
-      ownerId,
-      deletedAt: null,
-      status: { in: ['approved', 'under_review', 'documents_uploaded'] },
-    },
+  const drivers = await prisma.driver.findMany({
+    where: { ownerId, status: { not: 'deleted' } },
   });
-  if (activeVehicles > 0) {
-    return {
-      ok: false as const,
-      error: 'No se puede eliminar un dueño con vehículos activos. Suspende o usa soft delete.',
-    };
+  for (const driver of drivers) {
+    const active = await prisma.driverSession.findFirst({
+      where: { driverId: driver.id, disconnectedAt: null },
+    });
+    if (active) {
+      await prisma.driverSession.update({
+        where: { sessionId: active.sessionId },
+        data: { disconnectedAt: new Date() },
+      });
+    }
+    await revokeAllRefreshTokensForUser(driver.userId);
+    await prisma.driver.update({
+      where: { id: driver.id },
+      data: {
+        status: 'deleted',
+        deletedAt: new Date(),
+        deletedBy: ctx.adminUserId,
+      },
+    });
+  }
+
+  const vehicles = await prisma.vehicle.findMany({
+    where: { ownerId, deletedAt: null },
+  });
+  for (const vehicle of vehicles) {
+    await prisma.vehicle.update({
+      where: { id: vehicle.id },
+      data: {
+        status: 'deleted',
+        deletedAt: new Date(),
+        deletedBy: ctx.adminUserId,
+      },
+    });
   }
 
   await audit(ctx, {
