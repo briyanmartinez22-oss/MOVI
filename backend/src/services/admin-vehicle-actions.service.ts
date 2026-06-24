@@ -4,6 +4,7 @@ import { parseJsonField } from '../utils/normalize';
 import { mapVehicleMvpStatus } from '../utils/verification-status';
 import { writeAdminAudit } from './audit.service';
 import { hardDeleteVehicleRecord } from './admin-user-hard-delete.service';
+import { pickRegistrationCardUrl } from '../utils/vehicle-documents';
 
 type AdminContext = {
   adminUserId: string;
@@ -117,12 +118,16 @@ export async function approveAdminVehicle(vehicleId: string, ctx: AdminContext) 
   });
   if (!vehicle) return { ok: false as const, error: 'Vehículo no encontrado' };
 
+  const documents = parseJsonField<Record<string, unknown>>(vehicle.documentsJson, {});
+  const registrationCardUrl = pickRegistrationCardUrl(documents, vehicle.registrationCard);
+
   const updated = await prisma.vehicle.update({
     where: { id: vehicleId },
     data: {
       status: 'approved',
       rejectReason: null,
       autoRejected: false,
+      ...(registrationCardUrl ? { registrationCard: registrationCardUrl } : {}),
     },
     include: vehicleInclude,
   });

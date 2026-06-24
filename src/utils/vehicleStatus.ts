@@ -9,6 +9,10 @@ export function getVehicleStatusLabel(status: string): string {
   switch (status) {
     case 'draft':
       return 'Borrador';
+    case 'incomplete':
+      return 'Documentos incompletos';
+    case 'documents_uploaded':
+      return 'Documentos cargados';
     case 'under_review':
       return 'Pendiente de aprobación';
     case 'approved':
@@ -25,6 +29,8 @@ export function getVehicleStatusLabel(status: string): string {
 export function getVehicleApprovalHint(status: string): string | null {
   switch (status) {
     case 'draft':
+    case 'incomplete':
+    case 'documents_uploaded':
     case 'under_review':
       return 'Tu vehículo está pendiente de aprobación. Este vehículo aún no puede operar.';
     case 'approved':

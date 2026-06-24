@@ -49,6 +49,7 @@ export default function RegisterVehicle() {
   const [bedLengthM, setBedLengthM] = useState('');
   const [hasCargoCover, setHasCargoCover] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
+  const [vehicleStatus, setVehicleStatus] = useState<string>('draft');
   const [step, setStep] = useState<'info' | 'docs'>('info');
   const [error, setError] = useState('');
 
@@ -73,6 +74,7 @@ export default function RegisterVehicle() {
     });
     if (!res.ok) { setError(res.error ?? 'Error'); return; }
     setVehicleId(res.data!.vehicleId);
+    setVehicleStatus(res.data!.status);
     setStep('docs');
   };
 
@@ -80,21 +82,34 @@ export default function RegisterVehicle() {
     const { pickAndUploadDocument } = await import('../../src/services/uploadService');
     const url = await pickAndUploadDocument(key);
     if (!url) return;
-    await uploadVehicleDocuments(vehicleId, {
+    const res = await uploadVehicleDocuments(vehicleId, {
       [key]: url,
       ...(key === 'registrationCardImage' && registrationName
         ? { registrationName: registrationName.trim() }
         : {}),
     });
+    if (res.ok) setVehicleStatus(res.data!.status);
   };
 
+  const isApproved = vehicleStatus === 'approved';
+
   const submit = async () => {
+    if (isApproved) {
+      showSuccess('Vehículo aprobado', 'Tu unidad ya está aprobada. Puedes continuar.');
+      router.replace('/owner/vehicles');
+      return;
+    }
     const res = await submitVehicleVerification(vehicleId);
     if (!res.ok) {
       setError(res.error ?? 'Error al enviar verificación');
       return;
     }
-    showSuccess('Unidad enviada', `Tu ${vehicleLabel} está en revisión por el equipo MOVI.`);
+    setVehicleStatus(res.data!.status);
+    if (res.data!.status === 'approved') {
+      showSuccess('Vehículo aprobado', res.data!.message ?? 'Tu unidad ya está aprobada.');
+    } else {
+      showSuccess('Unidad enviada', `Tu ${vehicleLabel} está en revisión por el equipo MOVI.`);
+    }
     router.replace('/owner/vehicles');
   };
 
@@ -173,13 +188,20 @@ export default function RegisterVehicle() {
         ) : (
           <>
             <Text style={styles.section}>Documentos de la unidad</Text>
+            {isApproved ? (
+              <Text style={styles.approvedBanner}>Vehículo aprobado. Ya puedes continuar al siguiente paso.</Text>
+            ) : null}
             {VEHICLE_DOCS.map((key) => (
               <TouchableOpacity key={key} style={styles.docBtn} onPress={() => uploadDoc(key)}>
                 <Text style={styles.docLabel}>{DOC_LABELS[key]}</Text>
                 <Text style={styles.docAction}>Subir (mock)</Text>
               </TouchableOpacity>
             ))}
-            <PrimaryButton title="Enviar verificación" onPress={submit} style={{ marginTop: spacing.lg }} />
+            <PrimaryButton
+              title={isApproved ? 'Continuar' : 'Enviar verificación'}
+              onPress={submit}
+              style={{ marginTop: spacing.lg }}
+            />
           </>
         )}
       </KeyboardAwareScreen>
@@ -209,6 +231,14 @@ const styles = StyleSheet.create({
   chipText: { ...typography.caption, color: colors.text },
   error: { color: colors.danger, marginBottom: spacing.md },
   section: { ...typography.subtitle, color: colors.text, marginBottom: spacing.md, marginTop: spacing.sm },
+  approvedBanner: {
+    ...typography.body,
+    color: colors.online,
+    marginBottom: spacing.md,
+    backgroundColor: colors.borderLight,
+    padding: spacing.md,
+    borderRadius: 12,
+  },
   coverToggle: {
     backgroundColor: colors.borderLight,
     padding: spacing.md,

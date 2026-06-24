@@ -26,6 +26,10 @@ import {
   validateVehicleInvite,
 } from './vehicle-invite.service';
 import { enrichDriverRecord } from './driver-approval.service';
+import {
+  hasRegistrationCardDocument,
+  pickRegistrationCardUrl,
+} from '../utils/vehicle-documents';
 
 async function issueAuthBundle(userId: string, role: string) {
   const authToken = signAuthToken({ userId, role });
@@ -638,13 +642,24 @@ export async function uploadVehicleDocuments(
   }
 
   const merged = { ...parseJsonField(vehicle.documentsJson, {}), ...docs };
+  const registrationCardUrl = pickRegistrationCardUrl(merged, vehicle.registrationCard);
+  const updateData: {
+    documentsJson: string;
+    registrationName?: string | null;
+    registrationCard?: string | null;
+    status?: 'documents_uploaded';
+  } = {
+    documentsJson: stringifyJsonField(merged),
+    registrationName: (docs.registrationName as string | undefined) ?? vehicle.registrationName,
+    registrationCard: registrationCardUrl ?? vehicle.registrationCard,
+  };
+  if (vehicle.status !== 'approved') {
+    updateData.status = 'documents_uploaded';
+  }
+
   const updated = await prisma.vehicle.update({
     where: { id: vehicleId },
-    data: {
-      documentsJson: stringifyJsonField(merged),
-      registrationName: docs.registrationName ?? vehicle.registrationName,
-      status: 'documents_uploaded',
-    },
+    data: updateData,
   });
 
   return {
@@ -675,9 +690,31 @@ export async function submitVehicleVerification(vehicleId: string, requestingOwn
     return { ok: false as const, error: 'No autorizado para esta unidad.' };
   }
 
-  const docs = parseJsonField<Record<string, string>>(vehicle.documentsJson, {});
+  if (vehicle.status === 'approved') {
+    const docs = parseJsonField<Record<string, unknown>>(vehicle.documentsJson, {});
+    return {
+      ok: true as const,
+      alreadyApproved: true,
+      message: 'Vehículo ya aprobado',
+      vehicle: {
+        vehicleId: vehicle.id,
+        unitId: vehicle.unitId,
+        ownerId: vehicle.ownerId,
+        unitNumber: vehicle.unitNumber,
+        plateNumber: vehicle.plateNumber,
+        registrationName: vehicle.registrationName ?? undefined,
+        associationName: vehicle.associationName,
+        vehicleType: vehicle.vehicleType,
+        status: vehicle.status,
+        documents: docs,
+        createdAt: vehicle.createdAt.toISOString(),
+      },
+    };
+  }
+
+  const docs = parseJsonField<Record<string, unknown>>(vehicle.documentsJson, {});
   const missingCritical: string[] = [];
-  if (!docs.registrationCardImage && !vehicle.registrationCard) {
+  if (!hasRegistrationCardDocument(docs, vehicle.registrationCard)) {
     missingCritical.push('tarjeta de circulación');
   }
 
@@ -714,12 +751,14 @@ export async function submitVehicleVerification(vehicleId: string, requestingOwn
     };
   }
 
+  const registrationCardUrl = pickRegistrationCardUrl(docs, vehicle.registrationCard);
   const updated = await prisma.vehicle.update({
     where: { id: vehicleId },
     data: {
       status: 'under_review',
       rejectReason: null,
       autoRejected: false,
+      ...(registrationCardUrl ? { registrationCard: registrationCardUrl } : {}),
     },
   });
 

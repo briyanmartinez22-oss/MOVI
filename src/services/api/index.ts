@@ -268,10 +268,20 @@ export async function uploadVehicleDocuments(
 
 export async function submitVehicleVerification(
   vehicleId: string
-): Promise<ApiResponse<Vehicle>> {
+): Promise<ApiResponse<Vehicle & { message?: string }>> {
   if (useMockApi()) return mock.submitVehicleVerification(vehicleId);
-  const res = await apiPost<Vehicle>(`/vehicles/${vehicleId}/submit-verification`);
-  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al enviar verificación');
+  const res = await apiPost<Vehicle & { message?: string }>(
+    `/vehicles/${vehicleId}/submit-verification`
+  );
+  if (!res.ok) return fail(res.error ?? 'Error al enviar verificación');
+  const data = res.data!;
+  if (data.status === 'approved') {
+    return ok({
+      ...data,
+      message: data.message ?? 'Vehículo ya aprobado',
+    });
+  }
+  return ok(data);
 }
 
 export async function checkPlate(plate: string): Promise<ApiResponse<PlateCheckResult>> {

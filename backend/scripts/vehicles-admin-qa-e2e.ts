@@ -76,6 +76,41 @@ async function run() {
   const approve = await req(`/admin/vehicles/${vehicleId}/approve`, {}, adminToken);
   record('SUPER_ADMIN aprueba vehículo', approve.json.ok === true, approve.json.error);
 
+  const resubmitAfterApprove = await req(
+    `/vehicles/${vehicleId}/submit-verification`,
+    {},
+    ownerToken
+  );
+  const resubmitVehicle = resubmitAfterApprove.json.data ?? resubmitAfterApprove.json;
+  record(
+    'Owner re-submit tras aprobar → ok, status approved',
+    resubmitAfterApprove.status >= 200 &&
+      resubmitAfterApprove.status < 300 &&
+      resubmitVehicle?.status === 'approved',
+    String(resubmitVehicle?.status)
+  );
+
+  const uploadAfterApprove = await req(
+    `/vehicles/${vehicleId}/upload-documents`,
+    { permitImage: 'https://example.com/permit.jpg' },
+    ownerToken
+  );
+  const uploadVehicle = uploadAfterApprove.json.data ?? uploadAfterApprove.json;
+  record(
+    'Owner upload docs tras aprobar → status approved',
+    uploadAfterApprove.status >= 200 &&
+      uploadAfterApprove.status < 300 &&
+      uploadVehicle?.status === 'approved',
+    String(uploadVehicle?.status)
+  );
+
+  const detailApproved = await req(`/admin/vehicles/${vehicleId}`, undefined, adminToken);
+  record(
+    'Admin detail sin rejectReason tras re-submit',
+    !detailApproved.json.data?.rejectReason,
+    detailApproved.json.data?.rejectReason
+  );
+
   const ownerPhone2 = `82${String(Date.now()).slice(-6)}`;
   await req('/auth/request-otp', { phone: ownerPhone2 });
   await req('/auth/verify-otp', { phone: ownerPhone2, code: OTP });

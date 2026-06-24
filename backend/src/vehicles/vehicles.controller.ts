@@ -105,6 +105,9 @@ export class VehiclesController {
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Error de verificación', HttpStatus.BAD_REQUEST);
     }
+    if (result.alreadyApproved) {
+      return { ...result.vehicle, message: result.message };
+    }
     return result.vehicle;
   }
 
