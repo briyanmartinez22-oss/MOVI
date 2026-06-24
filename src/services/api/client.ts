@@ -52,6 +52,7 @@ const AUTH_TIMEOUT_MS = 20_000;
 
 function timeoutForPath(path: string): number {
   if (path.startsWith('/auth/')) return AUTH_TIMEOUT_MS;
+  if (path.includes('/admin/system/reset-beta')) return 120_000;
   return DEFAULT_TIMEOUT_MS;
 }
 

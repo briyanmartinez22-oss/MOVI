@@ -700,12 +700,26 @@ export async function fetchAdminDataSummary() {
   return res.ok ? res.data ?? null : null;
 }
 
-export async function adminResetBetaPlatform(): Promise<ApiResponse<Record<string, unknown>>> {
+export type BetaResetResult = {
+  totalDeleted?: number;
+  superAdminPhone?: string;
+  deleted?: Record<string, number>;
+  before?: Record<string, number>;
+};
+
+export async function adminResetBetaPlatform(): Promise<ApiResponse<BetaResetResult>> {
   if (useMockApi()) return fail('No disponible en mock');
-  const res = await apiPost<Record<string, unknown>>('/admin/system/reset-beta', {
+  const res = await apiPost<BetaResetResult & { ok?: boolean }>('/admin/system/reset-beta', {
     confirm: 'RESET_BETA_PLATFORM',
   });
-  return res.ok ? ok(res.data ?? {}) : fail(res.error ?? 'Error al limpiar plataforma');
+  if (!res.ok) {
+    return fail(res.error ?? 'Error al limpiar plataforma', res.code);
+  }
+  const payload = res.data ?? {};
+  if (payload.ok === false) {
+    return fail('El servidor rechazó la limpieza', 'RESET_REJECTED');
+  }
+  return ok(payload);
 }
 
 export async function selfAssignOwnerAsDriver(
