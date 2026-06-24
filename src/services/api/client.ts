@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiResponse } from '../../types/models';
 import { SESSION_KEYS } from '../authService';
-import { getApiUrl, useMockApi } from './config';
+import { getApiUrl, useMockApi, allowLocalApiUrl } from './config';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   auth?: boolean;
@@ -23,11 +23,11 @@ function resolveApiBaseUrl(): { ok: true; base: string } | { ok: false; error: s
     };
   }
 
-  if (/^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(base)) {
+  if (/^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(base) && !allowLocalApiUrl()) {
     return {
       ok: false,
       error:
-        'La app apunta a localhost. Usa el APK de producción con Railway configurado.',
+        'La app apunta a localhost. En dispositivo físico usa la URL pública del backend o EXPO_PUBLIC_ALLOW_LOCAL_API=true para desarrollo web.',
       code: 'API_URL_LOCALHOST',
     };
   }
@@ -114,10 +114,21 @@ export async function apiFetch<T>(
         (response.status >= 500
           ? 'El servidor no está disponible temporalmente. Intenta en unos minutos.'
           : `Error del servidor (${response.status})`);
+      const httpCode =
+        payload?.code ??
+        (response.status === 401
+          ? 'UNAUTHORIZED'
+          : response.status === 403
+            ? 'FORBIDDEN'
+            : response.status === 409
+              ? 'CONFLICT'
+              : response.status >= 500
+                ? 'SERVER_ERROR'
+                : 'HTTP_ERROR');
       return {
         ok: false,
         error: serverError,
-        code: payload?.code,
+        code: httpCode,
       };
     }
 
@@ -137,16 +148,16 @@ export async function apiFetch<T>(
       const base = resolved.ok ? resolved.base : getApiUrl();
       const detail =
         error instanceof Error && error.name === 'AbortError'
-          ? 'La solicitud tardó demasiado.'
-          : 'No se pudo conectar al servidor.';
+          ? 'La solicitud tardó demasiado. Verifica tu conexión e intenta de nuevo.'
+          : 'Sin conexión. Verifica tu red e intenta de nuevo.';
       return {
         ok: false,
-        error: `${detail} Verifica tu red. Backend: ${base || '(no configurado)'}`,
+        error: `${detail} Backend: ${base || '(no configurado)'}`,
         code: 'NETWORK_ERROR',
       };
     }
-    const message = error instanceof Error ? error.message : 'Error de red';
-    return { ok: false, error: message, code: 'NETWORK_ERROR' };
+    const message = error instanceof Error ? error.message : 'Error inesperado';
+    return { ok: false, error: message, code: 'CLIENT_ERROR' };
   } finally {
     clearTimeout(timeout);
   }

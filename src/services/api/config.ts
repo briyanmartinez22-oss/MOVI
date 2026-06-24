@@ -1,1 +1,1 @@
-export { getApiUrl, getWsUrl, useMockApi, env } from '../../config/env';
+export { getApiUrl, getWsUrl, useMockApi, allowLocalApiUrl, env } from '../../config/env';

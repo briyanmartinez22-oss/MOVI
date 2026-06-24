@@ -24,3 +24,23 @@ export function checkRateLimit(key: string, max: number, windowMs: number): bool
 export function resetRateLimit(key: string) {
   buckets.delete(key);
 }
+
+/** Limpia todos los buckets de rate limit (login lockouts, etc.). */
+export function clearAllRateLimits() {
+  buckets.clear();
+}
+
+/** Limpia lockouts de login para teléfonos dados (canónico E.164 recomendado). */
+export function clearLoginLockoutsForPhones(phoneNumbers: string[]) {
+  for (const phone of phoneNumbers) {
+    resetRateLimit(`login-fail:${phone}`);
+  }
+}
+
+export function clearAllLoginLockouts() {
+  for (const key of buckets.keys()) {
+    if (key.startsWith('login-fail:')) {
+      buckets.delete(key);
+    }
+  }
+}

@@ -81,21 +81,31 @@ export async function loginWithPassword(phone: string, password: string) {
     };
   }
 
-  const fail = () => {
+  const failInvalidCredentials = () => {
     recordLoginFailure(phoneNumber);
-    return { ok: false as const, error: GENERIC_LOGIN_ERROR };
+    return {
+      ok: false as const,
+      error: GENERIC_LOGIN_ERROR,
+      code: 'INVALID_CREDENTIALS' as const,
+    };
   };
 
   if (!user || !user.passwordHash) {
-    if (user && !user.passwordHash && user.role !== 'admin') {
-      recordLoginFailure(phoneNumber);
+    if (user?.role === 'admin') {
+      return {
+        ok: false as const,
+        error: 'Las cuentas administrativas usan verificación OTP. Usa acceso administrador.',
+        code: 'ADMIN_OTP_REQUIRED' as const,
+      };
+    }
+    if (user && !user.passwordHash) {
       return {
         ok: false as const,
         error: 'Debes crear una contraseña antes de iniciar sesión.',
         code: 'SET_PASSWORD_REQUIRED' as const,
       };
     }
-    return fail();
+    return failInvalidCredentials();
   }
 
   if (user.role === 'admin') {
@@ -117,7 +127,7 @@ export async function loginWithPassword(phone: string, password: string) {
   }
 
   if (!valid) {
-    return fail();
+    return failInvalidCredentials();
   }
 
   clearLoginFailures(phoneNumber);

@@ -14,6 +14,7 @@ import { useAsyncAction } from '../../src/utils/asyncAction';
 import { isValidMoviPhone, normalizePhone } from '../../src/utils/platform';
 import { getRoleHomeRoute } from '../../src/utils/platform';
 import { showSuccess } from '../../src/utils/feedback';
+import { SET_PASSWORD_REQUIRED_MESSAGE } from '../../src/utils/authErrors';
 import { colors, typography, spacing } from '../../src/theme';
 
 function sanitizePhoneInput(text: string): string {
@@ -22,14 +23,34 @@ function sanitizePhoneInput(text: string): string {
 
 export default function AuthLoginScreen() {
   const router = useRouter();
-  const { loginWithPassword, logout } = useAuth();
+  const { loginWithPassword, logout, requestOtp } = useAuth();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { loading, timedOut, run, retry } = useAsyncAction(15000);
+  const { loading, timedOut, run, retry } = useAsyncAction(20000);
 
   const phoneValid = isValidMoviPhone(phone);
   const canSubmit = phoneValid && password.length >= 8;
+
+  const handleCreatePassword = async () => {
+    if (!phoneValid) {
+      setError('Ingresa un teléfono válido para enviar el código OTP');
+      return;
+    }
+    setError('');
+    await run(async () => {
+      const normalized = normalizePhone(phone);
+      const res = await requestOtp(normalized);
+      if (!res.ok) {
+        setError(res.error ?? 'No se pudo enviar el código OTP');
+        return;
+      }
+      router.push({
+        pathname: '/auth/otp',
+        params: { phone: normalized, flow: 'set-password' },
+      });
+    });
+  };
 
   const handleLogin = async () => {
     if (!canSubmit) {
@@ -45,11 +66,7 @@ export default function AuthLoginScreen() {
         return;
       }
       if (res.code === 'PASSWORD_REQUIRED' || res.code === 'SET_PASSWORD_REQUIRED') {
-        setError('Debes crear una contraseña antes de iniciar sesión.');
-        router.push({
-          pathname: '/auth/otp',
-          params: { phone: normalizePhone(phone), flow: 'set-password' },
-        });
+        setError(SET_PASSWORD_REQUIRED_MESSAGE);
         return;
       }
       if (res.code === 'API_URL_MISSING' || res.code === 'API_URL_LOCALHOST') {
@@ -60,8 +77,12 @@ export default function AuthLoginScreen() {
         setError(res.error ?? 'Demasiados intentos. Espera 15 minutos.');
         return;
       }
+      if (res.code === 'INVALID_CREDENTIALS') {
+        setError(res.error ?? 'Teléfono o contraseña incorrectos.');
+        return;
+      }
       if (res.code === 'NETWORK_ERROR') {
-        setError(res.error ?? 'Error de conexión con el servidor.');
+        setError(res.error ?? 'Sin conexión. Verifica tu red e intenta de nuevo.');
         return;
       }
       if (res.code === 'ADMIN_OTP_REQUIRED') {
@@ -102,8 +123,11 @@ export default function AuthLoginScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton title="Iniciar sesión" onPress={handleLogin} loading={loading} disabled={!canSubmit} />
-        <Pressable onPress={() => router.push('/auth/forgot-password')}>
+        <Pressable onPress={() => router.push('/auth/forgot-password')} disabled={loading}>
           <Text style={styles.link}>¿Olvidaste tu contraseña?</Text>
+        </Pressable>
+        <Pressable onPress={() => void handleCreatePassword()} disabled={loading || !phoneValid}>
+          <Text style={[styles.link, !phoneValid && styles.linkMuted]}>Crear contraseña</Text>
         </Pressable>
         <Pressable onPress={() => router.push('/auth/register-account')}>
           <Text style={styles.link}>Crear cuenta</Text>
@@ -122,5 +146,6 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
   error: { ...typography.caption, color: colors.danger },
   link: { ...typography.body, color: colors.primary, textAlign: 'center', marginTop: spacing.sm },
+  linkMuted: { color: colors.textMuted },
   adminLink: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: spacing.lg },
 });

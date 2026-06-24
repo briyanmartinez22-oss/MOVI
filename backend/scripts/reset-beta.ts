@@ -5,6 +5,8 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { runBetaPlatformReset } from '../src/services/beta-reset.service';
+import { clearAllLoginLockouts, clearLoginLockoutsForPhones } from '../src/services/login-lockout.service';
+import { normalizePhone } from '../src/utils/phone';
 
 const prisma = new PrismaClient();
 
@@ -23,6 +25,18 @@ async function main() {
   }
 
   const result = await runBetaPlatformReset(prisma);
+
+  const extraPhones = (process.env.RESET_CLEAR_LOGIN_PHONES ?? '')
+    .split(/[,;\s]+/)
+    .map((p) => normalizePhone(p.trim()))
+    .filter(Boolean);
+  if (extraPhones.length > 0) {
+    clearLoginLockoutsForPhones(extraPhones);
+    console.log('Login lockouts cleared for:', extraPhones.join(', '));
+  } else {
+    clearAllLoginLockouts();
+    console.log('All login lockouts cleared.');
+  }
 
   console.log('\n=== BETA RESET COMPLETE ===');
   console.log('SUPER_ADMIN:', result.superAdminPhone);

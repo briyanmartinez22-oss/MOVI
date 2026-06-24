@@ -69,7 +69,7 @@ export default function CreatePasswordScreen() {
       if (flow === 'set') {
         const res = await setInitialPassword(params.phone ?? '', params.code ?? '', password, confirmPassword);
         if (res.ok) {
-          router.replace('/welcome');
+          router.replace('/auth/login');
         } else {
           setError(res.error ?? 'Error al crear contraseña');
         }

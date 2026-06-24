@@ -14,6 +14,11 @@ function readPublicEnv(key: string): string | undefined {
   return extra?.[key];
 }
 
+function allowLocalApiUrl(): boolean {
+  const explicit = readPublicEnv('EXPO_PUBLIC_ALLOW_LOCAL_API');
+  return explicit === 'true' || explicit === '1';
+}
+
 export function getApiUrl(): string {
   const url = readPublicEnv('EXPO_PUBLIC_API_URL') ?? DEFAULT_API_URL;
   if (!url && !useMockApi()) {
@@ -46,4 +51,7 @@ export const env = {
   apiUrl: getApiUrl(),
   wsUrl: getWsUrl(),
   useMockApi: useMockApi(),
+  allowLocalApi: allowLocalApiUrl(),
 } as const;
+
+export { allowLocalApiUrl };

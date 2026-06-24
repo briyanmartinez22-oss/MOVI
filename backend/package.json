@@ -17,6 +17,7 @@
     "db:seed-super-admin": "tsx scripts/seed-super-admin.ts",
     "db:verify-super-admin": "tsx scripts/verify-super-admin.ts",
     "db:reset-beta": "tsx scripts/reset-beta.ts",
+    "db:clear-login-lockouts": "tsx scripts/clear-login-lockouts.ts",
     "prisma:validate": "prisma validate",
     "prisma:migrate:status": "prisma migrate status",
     "qa": "tsx scripts/qa-e2e.ts",

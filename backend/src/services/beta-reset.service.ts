@@ -3,6 +3,7 @@ import {
   ensureSuperAdmin,
   SUPER_ADMIN_PHONE,
 } from './ensure-super-admin.service';
+import { clearAllLoginLockouts } from './login-lockout.service';
 
 export type BetaResetCounts = Record<string, number>;
 
@@ -74,6 +75,11 @@ export async function runBetaPlatformReset(
   await del('Users demo/QA', () =>
     prisma.user.deleteMany({ where: { NOT: { id: keepUserId } } })
   );
+  await del('AuditLog', () => prisma.auditLog.deleteMany({}));
+
+  if (!dryRun) {
+    clearAllLoginLockouts();
+  }
 
   const verified = dryRun ? superAdmin : await ensureSuperAdmin();
   const auditLogsKept = await prisma.auditLog.count();
