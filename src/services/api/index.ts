@@ -736,16 +736,24 @@ export async function selfAssignOwnerAsDriver(
   vehicleId: string,
   licenseFront: string,
   licenseBack: string
-): Promise<ApiResponse<DriverProfileRecord>> {
+): Promise<ApiResponse<DriverProfileRecord & { message?: string }>> {
   if (useMockApi()) return fail('Usa invitación en modo demo');
-  const res = await apiPost<{ driver: DriverProfileRecord }>('/owners/me/self-assign-driver', {
+  const res = await apiPost<{
+    driver: DriverProfileRecord;
+    message?: string;
+    alreadyRegistered?: boolean;
+  }>('/owners/me/self-assign-driver', {
     vehicleId,
     licenseFront,
     licenseBack,
   });
-  if (!res.ok || !res.data) return fail(res.error ?? 'No se pudo asignar');
-  setProfileCache({ driver: res.data.driver });
-  return ok(res.data.driver);
+  if (!res.ok || !res.data?.driver) return fail(res.error ?? 'No se pudo asignar');
+  const driver = {
+    ...res.data.driver,
+    message: res.data.message,
+  };
+  setProfileCache({ driver });
+  return ok(driver);
 }
 
 export async function fetchIntegrationsStatus() {
@@ -1191,22 +1199,29 @@ export async function fetchOwnerVehicles(): Promise<ApiResponse<Vehicle[]>> {
   for (const raw of res.data.vehicles) {
     const driver = raw.driver as {
       id?: string;
+      userId?: string;
       name?: string;
       phone?: string;
       status?: string;
+      licenseFront?: string;
+      licenseBack?: string;
+      approvalStatus?: string;
     } | null;
     if (driver?.id) {
       ownerDrivers.push({
         id: String(driver.id),
-        userId: '',
+        userId: String(driver.userId ?? ''),
         ownerId: String(raw.ownerId ?? ''),
         vehicleId: String(raw.vehicleId ?? raw.id ?? ''),
         name: String(driver.name ?? 'Conductor'),
         phone: String(driver.phone ?? ''),
-        status: (driver.status as DriverProfileRecord['status']) ?? 'approved',
+        status: (driver.status as DriverProfileRecord['status']) ?? 'pending',
         rating: 5,
         totalTrips: 0,
         createdAt: String(raw.createdAt ?? new Date().toISOString()),
+        licenseFront: driver.licenseFront,
+        licenseBack: driver.licenseBack,
+        approvalStatus: driver.approvalStatus,
       });
     }
   }

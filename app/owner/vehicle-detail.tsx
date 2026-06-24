@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton, VehicleBadge } from '../../src/components';
@@ -13,6 +13,13 @@ import {
   getVehicleApprovalHint,
   getVehicleStatusLabel,
 } from '../../src/utils/vehicleStatus';
+import {
+  canDriverOperateVehicle,
+  getDriverApprovalHint,
+  getDriverStatusLabel,
+  hasDriverLicenseUploaded,
+} from '../../src/utils/driverStatus';
+import { showError, showSuccess } from '../../src/utils/feedback';
 import { colors, typography, spacing } from '../../src/theme';
 
 export default function VehicleDetail() {
@@ -20,53 +27,66 @@ export default function VehicleDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { reload } = useProfileBootstrap('owner');
   const [selfAssigning, setSelfAssigning] = useState(false);
+  const [licenseFront, setLicenseFront] = useState('');
+  const [licenseBack, setLicenseBack] = useState('');
+  const [error, setError] = useState('');
   const vehicle = getVehicle(id ?? '');
-  const driver = vehicle?.driverId
-    ? getOwnerDrivers(vehicle.ownerId).find((d) => d.id === vehicle.driverId)
+  const vehicleDriver = vehicle
+    ? getOwnerDrivers(vehicle.ownerId).find((d) => d.vehicleId === vehicle.vehicleId)
     : null;
+
+  useEffect(() => {
+    if (vehicleDriver) {
+      setLicenseFront(vehicleDriver.licenseFront ?? '');
+      setLicenseBack(vehicleDriver.licenseBack ?? '');
+    }
+  }, [vehicleDriver?.id, vehicleDriver?.licenseFront, vehicleDriver?.licenseBack]);
 
   if (!vehicle) return null;
 
   const approvalHint = getVehicleApprovalHint(vehicle.status);
   const canInvite = canVehicleInviteDrivers(vehicle.status);
-  const canOperate = canVehicleOperate(vehicle.status);
-  const canSelfAssign = canOperate && !driver;
+  const canOperateVehicle = canVehicleOperate(vehicle.status);
+  const driverPending = vehicleDriver?.status === 'pending';
+  const driverApproved = vehicleDriver && canDriverOperateVehicle(vehicleDriver.status);
+  const canSelfAssign = canOperateVehicle && !vehicleDriver;
+  const canReplaceLicense = Boolean(vehicleDriver && !driverApproved);
+  const driverHint = vehicleDriver ? getDriverApprovalHint(vehicleDriver.status) : null;
 
-  const runSelfAssign = async (licenseFront: string, licenseBack: string) => {
+  const uploadLicense = async (side: 'front' | 'back') => {
+    setError('');
+    const { pickAndUploadDocument } = await import('../../src/services/uploadService');
+    const url = await pickAndUploadDocument(side === 'front' ? 'licenseFront' : 'licenseBack');
+    if (!url) {
+      setError('No se pudo subir la imagen. Intenta de nuevo.');
+      return;
+    }
+    if (side === 'front') setLicenseFront(url);
+    else setLicenseBack(url);
+  };
+
+  const submitSelfAssign = async () => {
+    if (!licenseFront || !licenseBack) {
+      setError('Sube licencia frontal y trasera antes de continuar.');
+      return;
+    }
     setSelfAssigning(true);
+    setError('');
     const res = await selfAssignOwnerAsDriver(vehicle.vehicleId, licenseFront, licenseBack);
     setSelfAssigning(false);
     if (!res.ok) {
-      Alert.alert('No se pudo asignar', res.error ?? 'Intenta de nuevo');
+      const msg = res.error ?? 'Intenta de nuevo';
+      setError(msg);
+      showError('No se pudo enviar', msg);
       return;
     }
+    if (res.data?.licenseFront) setLicenseFront(res.data.licenseFront);
+    if (res.data?.licenseBack) setLicenseBack(res.data.licenseBack);
     await reload();
-    Alert.alert(
-      'Perfil de conductor creado',
-      'Tu solicitud está pendiente de aprobación por un administrador.'
-    );
-  };
-
-  const handleSelfAssign = () => {
-    Alert.alert(
-      'Operaré este vehículo',
-      'Necesitas subir licencia de conducir (frontal y trasera).',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Subir licencia',
-          onPress: () => {
-            void (async () => {
-              const { pickAndUploadDocument } = await import('../../src/services/uploadService');
-              const front = await pickAndUploadDocument('licenseFront');
-              if (!front) return;
-              const back = await pickAndUploadDocument('licenseBack');
-              if (!back) return;
-              await runSelfAssign(front, back);
-            })();
-          },
-        },
-      ]
+    showSuccess(
+      driverApproved ? 'Conductor aprobado' : 'Licencia enviada',
+      res.data?.message ??
+        'Tu perfil de conductor está pendiente de aprobación por un administrador.'
     );
   };
 
@@ -81,19 +101,52 @@ export default function VehicleDetail() {
           <Text style={styles.row}>Asociación: {vehicle.associationName}</Text>
           <StatusBadge status={getVehicleStatusLabel(vehicle.status)} />
           {approvalHint ? <Text style={styles.hint}>{approvalHint}</Text> : null}
-          {driver && <Text style={styles.row}>Conductor: {driver.name}</Text>}
+          {vehicleDriver ? (
+            <>
+              <Text style={styles.row}>Conductor: {vehicleDriver.name}</Text>
+              <StatusBadge status={getDriverStatusLabel(vehicleDriver.status)} />
+              {driverHint ? <Text style={styles.hint}>{driverHint}</Text> : null}
+            </>
+          ) : null}
         </Card>
-        <PrimaryButton
-          title="Operaré este vehículo"
-          onPress={handleSelfAssign}
-          loading={selfAssigning}
-          disabled={!canSelfAssign}
-          style={{ marginTop: spacing.lg }}
-        />
+
+        {canOperateVehicle && (canSelfAssign || canReplaceLicense) ? (
+          <Card style={styles.licenseCard}>
+            <Text style={styles.section}>Licencia de conducir</Text>
+            <TouchableOpacity style={styles.docBtn} onPress={() => void uploadLicense('front')}>
+              <Text style={styles.docLabel}>Licencia — frontal</Text>
+              <Text style={styles.docAction}>{licenseFront ? '✓ Subida' : 'Subir foto'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.docBtn} onPress={() => void uploadLicense('back')}>
+              <Text style={styles.docLabel}>Licencia — trasera</Text>
+              <Text style={styles.docAction}>{licenseBack ? '✓ Subida' : 'Subir foto'}</Text>
+            </TouchableOpacity>
+            {hasDriverLicenseUploaded({ licenseFront, licenseBack }) && driverPending ? (
+              <Text style={styles.successHint}>Licencia registrada. Pendiente de aprobación.</Text>
+            ) : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <PrimaryButton
+              title={
+                vehicleDriver
+                  ? 'Actualizar licencia / reenviar'
+                  : 'Enviar licencia y operar vehículo'
+              }
+              onPress={() => void submitSelfAssign()}
+              loading={selfAssigning}
+              disabled={!licenseFront || !licenseBack}
+              style={{ marginTop: spacing.sm }}
+            />
+          </Card>
+        ) : null}
+
+        {driverApproved ? (
+          <Text style={styles.successHint}>Ya puedes operar esta unidad como conductor.</Text>
+        ) : null}
+
         <PrimaryButton
           title="Invitar conductor"
           onPress={() => router.push({ pathname: '/owner/invite-driver', params: { id: vehicle.vehicleId } })}
-          disabled={!canInvite || !!driver}
+          disabled={!canInvite || !!vehicleDriver}
           variant="outline"
           style={{ marginTop: spacing.md }}
         />
@@ -104,7 +157,20 @@ export default function VehicleDetail() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg },
+  content: { padding: spacing.lg, gap: spacing.md },
   row: { ...typography.body, color: colors.text, marginTop: spacing.sm },
   hint: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },
+  successHint: { ...typography.body, color: colors.online, marginTop: spacing.sm },
+  error: { ...typography.caption, color: colors.danger, marginTop: spacing.sm },
+  section: { ...typography.subtitle, color: colors.text, marginBottom: spacing.sm },
+  licenseCard: { gap: spacing.sm },
+  docBtn: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: colors.borderLight,
+    padding: spacing.md,
+    borderRadius: 12,
+  },
+  docLabel: { ...typography.body, color: colors.text, flex: 1 },
+  docAction: { ...typography.caption, color: colors.textSecondary },
 });

@@ -1,6 +1,8 @@
 import type { Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { parseJsonField, toAuthUser } from '../utils/normalize';
+import { getDriverLicenseUrls } from '../utils/driver-license-docs';
+import { enrichDriverRecord } from '../services/driver-approval.service';
 
 type RoleAssignmentRow = Prisma.UserRoleAssignmentGetPayload<{ select: { role: true } }>;
 type OwnerVehicleRow = Prisma.VehicleGetPayload<{ include: { driver: true } }>;
@@ -112,29 +114,44 @@ export async function listOwnerVehicles(ownerUserId: string) {
   if (!owner) return [];
 
   const vehicles = await prisma.vehicle.findMany({
-    where: { ownerId: owner.id },
+    where: { ownerId: owner.id, deletedAt: null },
     include: { driver: true },
     orderBy: { createdAt: 'desc' },
   });
 
-  return vehicles.map((v: OwnerVehicleRow) => ({
-    vehicleId: v.id,
-    unitId: v.unitId,
-    ownerId: v.ownerId,
-    unitNumber: v.unitNumber,
-    plateNumber: v.plateNumber,
-    registrationName: v.registrationName ?? undefined,
-    associationName: v.associationName,
-    vehicleType: v.vehicleType,
-    status: v.status,
-    documents: parseJsonField(v.documentsJson, {}),
-    driverId: v.driver?.id,
-    maxLoadKg: v.maxLoadKg ?? undefined,
-    bedLengthM: v.bedLengthM ?? undefined,
-    hasCargoCover: v.hasCargoCover ?? undefined,
-    createdAt: v.createdAt.toISOString(),
-    driver: v.driver
-      ? { id: v.driver.id, name: v.driver.name, phone: v.driver.phone, status: v.driver.status }
-      : null,
-  }));
+  return Promise.all(
+    vehicles.map(async (v: OwnerVehicleRow) => {
+      const licenseUrls = v.driver ? await getDriverLicenseUrls(v.driver.id) : {};
+      const driverPayload = v.driver
+        ? enrichDriverRecord({
+            id: v.driver.id,
+            userId: v.driver.userId,
+            ownerId: v.driver.ownerId,
+            vehicleId: v.driver.vehicleId,
+            name: v.driver.name,
+            phone: v.driver.phone,
+            status: v.driver.status,
+            ...licenseUrls,
+          })
+        : null;
+      return {
+        vehicleId: v.id,
+        unitId: v.unitId,
+        ownerId: v.ownerId,
+        unitNumber: v.unitNumber,
+        plateNumber: v.plateNumber,
+        registrationName: v.registrationName ?? undefined,
+        associationName: v.associationName,
+        vehicleType: v.vehicleType,
+        status: v.status,
+        documents: parseJsonField(v.documentsJson, {}),
+        driverId: v.driver?.id,
+        maxLoadKg: v.maxLoadKg ?? undefined,
+        bedLengthM: v.bedLengthM ?? undefined,
+        hasCargoCover: v.hasCargoCover ?? undefined,
+        createdAt: v.createdAt.toISOString(),
+        driver: driverPayload,
+      };
+    })
+  );
 }

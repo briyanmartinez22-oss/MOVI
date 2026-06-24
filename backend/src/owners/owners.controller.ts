@@ -149,7 +149,11 @@ export class OwnersController {
     if (!result.ok) {
       throw new HttpException(result.error ?? 'No se pudo asignar', HttpStatus.BAD_REQUEST);
     }
-    return { driver: result.driver };
+    return {
+      driver: result.driver,
+      message: result.message,
+      alreadyRegistered: result.alreadyRegistered ?? false,
+    };
   }
 
   @Get('me/vehicle-invites')

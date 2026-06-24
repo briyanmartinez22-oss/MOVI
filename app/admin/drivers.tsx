@@ -69,6 +69,9 @@ export default function AdminDriversScreen() {
             mvpStatus={d.mvpStatus}
             lines={[
               d.phone,
+              d.licenseFront && d.licenseBack
+                ? 'Licencia: documentos cargados'
+                : 'Licencia: pendiente de subir',
               d.vehicle
                 ? `Unidad #${d.vehicle.unitNumber} · ${d.vehicle.plateNumber} · ${d.vehicle.vehicleType}`
                 : 'Sin vehículo',

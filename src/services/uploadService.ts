@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SESSION_KEYS } from './authService';
 import { getApiUrl } from './api/config';
 
 export async function uploadFile(
@@ -5,9 +7,7 @@ export async function uploadFile(
   fileName?: string,
   documentType?: string
 ): Promise<string> {
-  const token = await import('@react-native-async-storage/async-storage').then((m) =>
-    m.default.getItem('movi_session_authToken')
-  );
+  const token = await AsyncStorage.getItem(SESSION_KEYS.authToken);
   const name = fileName ?? `upload-${Date.now()}.jpg`;
   const formData = new FormData();
   formData.append('file', {

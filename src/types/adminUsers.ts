@@ -11,6 +11,8 @@ export type AdminDriverRecord = {
   totalTrips: number;
   online: boolean;
   subscriptionStatus: string | null;
+  licenseFront?: string;
+  licenseBack?: string;
   vehicle: {
     unitNumber: string;
     plateNumber: string;

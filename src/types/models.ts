@@ -262,6 +262,9 @@ export interface DriverProfileRecord {
   rating: number;
   totalTrips: number;
   createdAt: string;
+  licenseFront?: string;
+  licenseBack?: string;
+  approvalStatus?: string;
 }
 
 export interface DriverSession {

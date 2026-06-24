@@ -6,6 +6,7 @@ import {
   mapVehicleMvpStatus,
 } from '../utils/verification-status';
 import { serializeTrip } from './tripService';
+import { getDriverLicenseUrls } from '../utils/driver-license-docs';
 
 export async function listProviders() {
   const owners = await prisma.owner.findMany({
@@ -71,6 +72,7 @@ export async function listAdminTrips(status?: string) {
 
 export async function listAdminDrivers() {
   const drivers = await prisma.driver.findMany({
+    where: { deletedAt: null },
     include: {
       user: true,
       vehicle: true,
@@ -82,28 +84,35 @@ export async function listAdminDrivers() {
     take: 200,
   });
 
-  return drivers.map((d) => ({
-    id: d.id,
-    userId: d.userId,
-    name: d.name,
-    phone: d.phone,
-    status: d.status,
-    mvpStatus: mapDriverMvpStatus(d.status),
-    rating: d.rating,
-    totalTrips: d.totalTrips,
-    online: d.sessions.length > 0,
-    subscriptionStatus: d.subscription?.status ?? null,
-    vehicle: d.vehicle
-      ? {
-          unitNumber: d.vehicle.unitNumber,
-          plateNumber: d.vehicle.plateNumber,
-          vehicleType: d.vehicle.vehicleType,
-        }
-      : null,
-    ownerName: d.owner.name,
-    phoneVerified: d.user.phoneVerified,
-    createdAt: d.createdAt.toISOString(),
-  }));
+  return Promise.all(
+    drivers.map(async (d) => {
+      const licenseUrls = await getDriverLicenseUrls(d.id);
+      return {
+        id: d.id,
+        userId: d.userId,
+        name: d.name,
+        phone: d.phone,
+        status: d.status,
+        mvpStatus: mapDriverMvpStatus(d.status),
+        rating: d.rating,
+        totalTrips: d.totalTrips,
+        online: d.sessions.length > 0,
+        subscriptionStatus: d.subscription?.status ?? null,
+        licenseFront: licenseUrls.licenseFront,
+        licenseBack: licenseUrls.licenseBack,
+        vehicle: d.vehicle
+          ? {
+              unitNumber: d.vehicle.unitNumber,
+              plateNumber: d.vehicle.plateNumber,
+              vehicleType: d.vehicle.vehicleType,
+            }
+          : null,
+        ownerName: d.owner.name,
+        phoneVerified: d.user.phoneVerified,
+        createdAt: d.createdAt.toISOString(),
+      };
+    })
+  );
 }
 
 export async function listAdminPassengers() {

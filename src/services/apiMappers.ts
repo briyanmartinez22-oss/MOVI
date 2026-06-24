@@ -55,6 +55,9 @@ export function mapDriver(raw: Record<string, unknown>): DriverProfileRecord {
     rating: typeof raw.rating === 'number' ? raw.rating : 5,
     totalTrips: typeof raw.totalTrips === 'number' ? raw.totalTrips : 0,
     createdAt: toIso((raw.createdAt as string | Date) ?? new Date().toISOString()),
+    licenseFront: raw.licenseFront ? String(raw.licenseFront) : undefined,
+    licenseBack: raw.licenseBack ? String(raw.licenseBack) : undefined,
+    approvalStatus: raw.approvalStatus ? String(raw.approvalStatus) : undefined,
   };
 }
 

@@ -27,6 +27,10 @@ import {
 } from './vehicle-invite.service';
 import { enrichDriverRecord } from './driver-approval.service';
 import {
+  getDriverLicenseUrls,
+  upsertDriverLicenseDocuments,
+} from '../utils/driver-license-docs';
+import {
   hasRegistrationCardDocument,
   pickRegistrationCardUrl,
 } from '../utils/vehicle-documents';
@@ -503,13 +507,10 @@ export async function selfAssignOwnerAsDriver(
   const driverOnVehicle = await prisma.driver.findFirst({
     where: { vehicleId, status: { in: ['approved', 'pending'] }, deletedAt: null },
   });
-  if (driverOnVehicle) {
-    return { ok: false as const, error: 'Esta unidad ya tiene conductor asignado.' };
-  }
-
   const existingDriver = await prisma.driver.findUnique({ where: { userId } });
-  if (existingDriver) {
-    return { ok: false as const, error: 'Ya tienes perfil de conductor.' };
+
+  if (driverOnVehicle && driverOnVehicle.userId !== userId) {
+    return { ok: false as const, error: 'Esta unidad ya tiene conductor asignado.' };
   }
 
   if (!license?.licenseFront || !license?.licenseBack) {
@@ -518,6 +519,86 @@ export async function selfAssignOwnerAsDriver(
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { ok: false as const, error: 'Usuario no encontrado.' };
+
+  if (existingDriver) {
+    if (existingDriver.vehicleId !== vehicleId) {
+      return { ok: false as const, error: 'Ya tienes perfil de conductor en otra unidad.' };
+    }
+    if (existingDriver.status === 'approved') {
+      const licenseUrls = await getDriverLicenseUrls(existingDriver.id);
+      return {
+        ok: true as const,
+        alreadyRegistered: true,
+        message: 'Perfil de conductor ya aprobado.',
+        driver: enrichDriverRecord({
+          id: existingDriver.id,
+          userId: existingDriver.userId,
+          ownerId: existingDriver.ownerId,
+          vehicleId: existingDriver.vehicleId,
+          firstName: existingDriver.firstName,
+          lastName: existingDriver.lastName,
+          name: existingDriver.name,
+          phone: existingDriver.phone,
+          email: existingDriver.email ?? undefined,
+          status: existingDriver.status,
+          source: existingDriver.source,
+          inviteCodeUsed: existingDriver.inviteCodeUsed ?? undefined,
+          rating: existingDriver.rating,
+          totalTrips: existingDriver.totalTrips,
+          createdAt: existingDriver.createdAt.toISOString(),
+          ...licenseUrls,
+        }),
+      };
+    }
+
+    await upsertDriverLicenseDocuments(existingDriver.id, userId, license);
+    const updated = await prisma.driver.update({
+      where: { id: existingDriver.id },
+      data: { status: 'pending' },
+    });
+
+    const existingSub = await prisma.driverSubscription.findUnique({
+      where: { driverId: existingDriver.id },
+    });
+    if (!existingSub) {
+      await createDriverSubscription(existingDriver.id);
+    }
+
+    const activeAssignment = await prisma.vehicleAssignment.findFirst({
+      where: { driverId: existingDriver.id, vehicleId, isActive: true },
+    });
+    if (!activeAssignment) {
+      await prisma.vehicleAssignment.create({
+        data: { driverId: existingDriver.id, vehicleId, isActive: true, notes: 'SELF_OWNER' },
+      });
+    }
+
+    await assignUserRole(userId, 'driver');
+
+    const licenseUrls = await getDriverLicenseUrls(updated.id);
+    return {
+      ok: true as const,
+      message: 'Licencia actualizada. Pendiente de aprobación.',
+      driver: enrichDriverRecord({
+        id: updated.id,
+        userId: updated.userId,
+        ownerId: updated.ownerId,
+        vehicleId: updated.vehicleId,
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        name: updated.name,
+        phone: updated.phone,
+        email: updated.email ?? undefined,
+        status: updated.status,
+        source: updated.source,
+        inviteCodeUsed: updated.inviteCodeUsed ?? undefined,
+        rating: updated.rating,
+        totalTrips: updated.totalTrips,
+        createdAt: updated.createdAt.toISOString(),
+        ...licenseUrls,
+      }),
+    };
+  }
 
   const driverCount = await prisma.driver.count();
   const driverPublicId = generateDriverPublicId(driverCount);
@@ -539,24 +620,7 @@ export async function selfAssignOwnerAsDriver(
     },
   });
 
-  await prisma.verificationDocument.createMany({
-    data: [
-      {
-        driverId: driver.id,
-        userId: user.id,
-        documentType: 'license_front',
-        fileUrl: license.licenseFront,
-        status: 'pending',
-      },
-      {
-        driverId: driver.id,
-        userId: user.id,
-        documentType: 'license_back',
-        fileUrl: license.licenseBack,
-        status: 'pending',
-      },
-    ],
-  });
+  await upsertDriverLicenseDocuments(driver.id, userId, license);
 
   await createDriverSubscription(driver.id);
   await prisma.vehicleAssignment.create({
@@ -564,9 +628,11 @@ export async function selfAssignOwnerAsDriver(
   });
   await assignUserRole(userId, 'driver');
 
+  const licenseUrls = await getDriverLicenseUrls(driver.id);
   return {
     ok: true as const,
-    driver: {
+    message: 'Perfil de conductor creado. Pendiente de aprobación.',
+    driver: enrichDriverRecord({
       id: driver.id,
       userId: driver.userId,
       ownerId: driver.ownerId,
@@ -582,7 +648,8 @@ export async function selfAssignOwnerAsDriver(
       rating: driver.rating,
       totalTrips: driver.totalTrips,
       createdAt: driver.createdAt.toISOString(),
-    },
+      ...licenseUrls,
+    }),
   };
 }
 
