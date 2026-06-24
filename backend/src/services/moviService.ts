@@ -235,7 +235,13 @@ export async function registerBusiness(
 
 export async function checkPlate(plate: string) {
   const normalized = plate.toUpperCase().trim();
-  const existing = await prisma.vehicle.findUnique({ where: { plateNumber: normalized } });
+  const existing = await prisma.vehicle.findFirst({
+    where: {
+      plateNumber: normalized,
+      status: { not: 'deleted' },
+      deletedAt: null,
+    },
+  });
   if (existing) {
     return {
       ok: true as const,

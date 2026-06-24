@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { parseJsonField } from '../utils/normalize';
 import { mapVehicleMvpStatus } from '../utils/verification-status';
 import { writeAdminAudit } from './audit.service';
+import { hardDeleteVehicleRecord } from './admin-user-hard-delete.service';
 
 type AdminContext = {
   adminUserId: string;
@@ -226,27 +227,18 @@ export async function reactivateAdminVehicle(vehicleId: string, ctx: AdminContex
 }
 
 export async function deleteAdminVehicle(vehicleId: string, ctx: AdminContext) {
-  const vehicle = await prisma.vehicle.findFirst({
-    where: { id: vehicleId, status: { not: 'deleted' } },
-  });
+  const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
   if (!vehicle) return { ok: false as const, error: 'Vehículo no encontrado' };
-
-  await prisma.vehicle.update({
-    where: { id: vehicleId },
-    data: {
-      status: 'deleted',
-      deletedAt: new Date(),
-      deletedBy: ctx.adminUserId,
-    },
-  });
 
   await audit(ctx, {
     action: 'delete',
     entityType: 'vehicle',
     entityId: vehicleId,
-    before: { status: vehicle.status },
-    after: { status: 'deleted' },
+    before: { status: vehicle.status, plateNumber: vehicle.plateNumber },
+    after: { deleted: true, hard: true },
   });
 
-  return { ok: true as const, data: { deleted: true, id: vehicleId } };
+  const deleted = await hardDeleteVehicleRecord(vehicleId);
+  if (!deleted.ok) return { ok: false as const, error: deleted.error };
+  return { ok: true as const, data: { deleted: true, id: vehicleId, hard: true } };
 }
