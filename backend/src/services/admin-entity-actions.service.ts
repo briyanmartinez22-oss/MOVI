@@ -5,6 +5,7 @@ import { normalizePhone } from '../utils/phone';
 import { mapDriverMvpStatus, mapOwnerMvpStatus } from '../utils/verification-status';
 import { mapDriverApprovalStatus } from './driver-approval.service';
 import {
+  hardDeleteOwnerRecord,
   hardDeleteUserAccount,
 } from './admin-user-hard-delete.service';
 import { writeAdminAudit } from './audit.service';
@@ -474,7 +475,7 @@ export async function deleteAdminOwner(ownerId: string, ctx: AdminContext) {
     before: serializeOwner(owner),
   });
 
-  const deleted = await hardDeleteUserAccount(owner.userId);
+  const deleted = await hardDeleteOwnerRecord(ownerId);
   if (!deleted.ok) return { ok: false as const, error: deleted.error };
   return { ok: true as const, data: { deleted: true, id: ownerId, hard: true } };
 }

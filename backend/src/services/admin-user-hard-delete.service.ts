@@ -29,8 +29,73 @@ async function releasePhoneFromSystem(phoneNumber: string) {
 }
 
 /**
- * Elimina cuenta y perfil por completo — libera teléfono para nuevo registro.
- * No elimina SUPER_ADMIN ni cuentas admin.
+ * Elimina solo el vehículo y sus dependencias directas.
+ * No elimina el dueño ni la cuenta de usuario del conductor asignado.
+ */
+export async function hardDeleteVehicleRecord(vehicleId: string): Promise<DeleteResult> {
+  const vehicle = await prisma.vehicle.findUnique({
+    where: { id: vehicleId },
+    include: { driver: { select: { id: true } } },
+  });
+  if (!vehicle) return { ok: false, error: 'Vehículo no encontrado' };
+
+  if (vehicle.driver) {
+    await cleanupDriverRecord(vehicle.driver.id);
+    await prisma.verificationDocument.deleteMany({ where: { driverId: vehicle.driver.id } });
+  }
+
+  await prisma.vehicleInvite.deleteMany({ where: { vehicleId } });
+  await prisma.vehicleAssignment.deleteMany({ where: { vehicleId } });
+  await prisma.driverSession.deleteMany({ where: { vehicleId } });
+  await prisma.tripOffer.updateMany({ where: { vehicleId }, data: { vehicleId: null } });
+  await prisma.verificationDocument.deleteMany({ where: { vehicleId } });
+
+  await prisma.vehicle.delete({ where: { id: vehicleId } });
+  return { ok: true };
+}
+
+/**
+ * Elimina un dueño específico, sus vehículos e invitaciones.
+ * Libera teléfono/DUI del dueño para nuevo registro.
+ * No elimina otros owners ni ejecuta reset beta.
+ */
+export async function hardDeleteOwnerRecord(ownerId: string): Promise<DeleteResult> {
+  const owner = await prisma.owner.findUnique({
+    where: { id: ownerId },
+    include: {
+      user: true,
+      vehicles: { select: { id: true } },
+      drivers: { select: { id: true } },
+    },
+  });
+  if (!owner) return { ok: false, error: 'Dueño no encontrado' };
+  if (owner.user.role === 'admin') {
+    return { ok: false, error: 'No se puede eliminar una cuenta administrativa' };
+  }
+
+  for (const driver of owner.drivers) {
+    await cleanupDriverRecord(driver.id);
+    await prisma.verificationDocument.deleteMany({ where: { driverId: driver.id } });
+  }
+
+  for (const vehicle of owner.vehicles) {
+    const deleted = await hardDeleteVehicleRecord(vehicle.id);
+    if (!deleted.ok) return deleted;
+  }
+
+  await prisma.vehicleInvite.deleteMany({ where: { ownerId } });
+  await prisma.verificationDocument.deleteMany({ where: { ownerId } });
+
+  await revokeAllRefreshTokensForUser(owner.userId);
+  await releasePhoneFromSystem(owner.user.phoneNumber);
+
+  await prisma.user.delete({ where: { id: owner.userId } });
+  return { ok: true };
+}
+
+/**
+ * Elimina una cuenta de usuario individual (pasajero, conductor, comercio).
+ * Para dueños usa hardDeleteOwnerRecord (alcance del owner, no global).
  */
 export async function hardDeleteUserAccount(userId: string): Promise<DeleteResult> {
   const user = await prisma.user.findUnique({
@@ -43,46 +108,17 @@ export async function hardDeleteUserAccount(userId: string): Promise<DeleteResul
   }
 
   if (user.owner) {
-    const childDrivers = await prisma.driver.findMany({
-      where: { ownerId: user.owner.id },
-      select: { id: true, userId: true },
-    });
-    for (const child of childDrivers) {
-      if (child.userId === userId) continue;
-      const sub = await hardDeleteUserAccount(child.userId);
-      if (!sub.ok) return sub;
-    }
+    return hardDeleteOwnerRecord(user.owner.id);
   }
 
   if (user.driver) {
     await cleanupDriverRecord(user.driver.id);
+    await prisma.verificationDocument.deleteMany({ where: { driverId: user.driver.id } });
   }
 
   await revokeAllRefreshTokensForUser(userId);
   await releasePhoneFromSystem(user.phoneNumber);
 
   await prisma.user.delete({ where: { id: userId } });
-  return { ok: true };
-}
-
-/** Hard-delete vehículo — libera placa y elimina conductor asignado si existe. */
-export async function hardDeleteVehicleRecord(vehicleId: string): Promise<DeleteResult> {
-  const vehicle = await prisma.vehicle.findUnique({
-    where: { id: vehicleId },
-    include: { driver: { select: { id: true, userId: true } } },
-  });
-  if (!vehicle) return { ok: false, error: 'Vehículo no encontrado' };
-
-  if (vehicle.driver) {
-    const driverDelete = await hardDeleteUserAccount(vehicle.driver.userId);
-    if (!driverDelete.ok) return driverDelete;
-  }
-
-  await prisma.vehicleInvite.deleteMany({ where: { vehicleId } });
-  await prisma.vehicleAssignment.deleteMany({ where: { vehicleId } });
-  await prisma.driverSession.deleteMany({ where: { vehicleId } });
-  await prisma.tripOffer.updateMany({ where: { vehicleId }, data: { vehicleId: null } });
-
-  await prisma.vehicle.delete({ where: { id: vehicleId } });
   return { ok: true };
 }
