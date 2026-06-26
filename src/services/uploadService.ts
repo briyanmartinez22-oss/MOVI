@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 import { SESSION_KEYS } from './authService';
 import { getApiUrl } from './api/config';
@@ -7,6 +8,13 @@ type UploadAsset = {
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;
+  file?: File;
+};
+
+type NativeFormFile = {
+  uri: string;
+  name: string;
+  type: string;
 };
 
 function inferMimeType(uri: string, fallback?: string | null): string {
@@ -31,17 +39,50 @@ function inferFileName(uri: string, provided?: string | null): string {
   return `upload-${Date.now()}.${ext}`;
 }
 
-async function buildFormDataFile(
+async function pickWebFile(): Promise<{ file: File; uri: string; fileName: string; mimeType: string } | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      const uri = URL.createObjectURL(file);
+      resolve({
+        file,
+        uri,
+        fileName: file.name,
+        mimeType: file.type || 'image/jpeg',
+      });
+    };
+    input.click();
+  });
+}
+
+async function buildWebFile(uri: string, fileName: string, mimeType: string): Promise<File> {
+  const response = await fetch(uri);
+  if (!response.ok) {
+    throw new Error(`WEB_FILE_FETCH_${response.status}`);
+  }
+  const blob = await response.blob();
+  return new File([blob], fileName, { type: mimeType });
+}
+
+async function buildFormFile(
   uri: string,
   fileName: string,
-  mimeType: string
-): Promise<any> {
-  if (Platform.OS === 'web') {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return new File([blob], fileName, { type: mimeType });
+  mimeType: string,
+  webFile?: File
+): Promise<File | NativeFormFile> {
+  if (webFile) {
+    return webFile;
   }
-
+  if (Platform.OS === 'web') {
+    return buildWebFile(uri, fileName, mimeType);
+  }
   return {
     uri,
     name: fileName,
@@ -53,22 +94,33 @@ export async function uploadFile(
   uri: string,
   fileName?: string,
   documentType?: string,
-  mimeType?: string
+  mimeType?: string,
+  webFile?: File
 ): Promise<string> {
   const token = await AsyncStorage.getItem(SESSION_KEYS.authToken);
   const resolvedName = inferFileName(uri, fileName);
   const resolvedType = inferMimeType(uri, mimeType);
+  const apiBase = getApiUrl().replace(/\/$/, '');
 
-  const fileValue = await buildFormDataFile(uri, resolvedName, resolvedType);
+  const fileValue = await buildFormFile(uri, resolvedName, resolvedType, webFile);
 
   const formData = new FormData();
-  formData.append('file', fileValue);
-
+  formData.append('file', fileValue as any);
   if (documentType) {
     formData.append('documentType', documentType);
   }
 
-  const apiBase = getApiUrl().replace(/\/$/, '');
+  console.log('[UPLOAD] starting', {
+    platform: Platform.OS,
+    uri,
+    resolvedName,
+    resolvedType,
+    documentType,
+    apiBase,
+    hasToken: Boolean(token),
+    directWebFile: Boolean(webFile),
+  });
+
   const res = await fetch(`${apiBase}/uploads`, {
     method: 'POST',
     headers: {
@@ -78,11 +130,15 @@ export async function uploadFile(
     body: formData,
   });
 
+  const rawText = await res.text();
+  console.log('[UPLOAD] response status', res.status);
+  console.log('[UPLOAD] response body', rawText);
+
   let json: any = null;
   try {
-    json = await res.json();
+    json = rawText ? JSON.parse(rawText) : null;
   } catch {
-    throw new Error(`UPLOAD_BAD_RESPONSE_${res.status}`);
+    throw new Error(`UPLOAD_BAD_RESPONSE_${res.status}::${rawText}`);
   }
 
   if (!res.ok) {
@@ -104,12 +160,31 @@ export async function uploadPickedAsset(
     asset.uri,
     inferFileName(asset.uri, asset.fileName),
     documentType,
-    inferMimeType(asset.uri, asset.mimeType)
+    inferMimeType(asset.uri, asset.mimeType),
+    asset.file
   );
 }
 
 export async function pickAndUploadDocument(documentType?: string): Promise<string | null> {
-  const ImagePicker = await import('expo-image-picker');
+  if (Platform.OS === 'web') {
+    const picked = await pickWebFile();
+    console.log('[UPLOAD] web picker result', picked ? { fileName: picked.fileName, mimeType: picked.mimeType } : null);
+    if (!picked) {
+      return null;
+    }
+
+    try {
+      return await uploadFile(
+        picked.uri,
+        picked.fileName,
+        documentType,
+        picked.mimeType,
+        picked.file
+      );
+    } finally {
+      URL.revokeObjectURL(picked.uri);
+    }
+  }
 
   const currentPerm = await ImagePicker.getMediaLibraryPermissionsAsync();
   let granted = currentPerm.granted;
@@ -129,6 +204,8 @@ export async function pickAndUploadDocument(documentType?: string): Promise<stri
     quality: 0.8,
     selectionLimit: 1,
   });
+
+  console.log('[UPLOAD] picker result', result);
 
   if (result.canceled || !result.assets?.[0]?.uri) {
     return null;
