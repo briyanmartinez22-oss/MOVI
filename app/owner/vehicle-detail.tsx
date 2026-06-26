@@ -8,6 +8,7 @@ import {
   Animated,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +31,12 @@ import {
   hasDriverLicenseUploaded,
 } from '../../src/utils/driverStatus';
 import { showError, showSuccess } from '../../src/utils/feedback';
+import {
+  getUploadErrorMessage,
+  pickAndUploadDocumentDetailed,
+  UploadDocumentError,
+  type UploadSource,
+} from '../../src/services/uploadService';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 // ── Componente de fila de documento con estado visual ──────────────
@@ -133,29 +140,63 @@ export default function VehicleDetail() {
 
   const bothUploaded = Boolean(licenseFront && licenseBack);
 
+  const selectUploadSource = async (): Promise<UploadSource | null> => {
+    if (Platform.OS === 'web') return 'library';
+    return new Promise((resolve) => {
+      let settled = false;
+      const complete = (value: UploadSource | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      Alert.alert(
+        'Selecciona origen',
+        'Puedes tomar una foto o elegir una imagen de tu galería.',
+        [
+          { text: 'Tomar foto', onPress: () => complete('camera') },
+          { text: 'Elegir de galería', onPress: () => complete('library') },
+          { text: 'Cancelar', style: 'cancel', onPress: () => complete(null) },
+        ],
+        { cancelable: true, onDismiss: () => complete(null) }
+      );
+    });
+  };
+
   const uploadLicense = async (side: 'front' | 'back') => {
     setError('');
     const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
     setUploading(true);
+    const source = await selectUploadSource();
+    if (!source) {
+      setUploading(false);
+      return;
+    }
     try {
-      const { pickAndUploadDocument } = await import('../../src/services/uploadService');
-      const url = await pickAndUploadDocument(
-        side === 'front' ? 'licenseFront' : 'licenseBack'
-      );
-      if (!url) {
-        // El usuario canceló el picker — no es error
-        setUploading(false);
+      const upload = await pickAndUploadDocumentDetailed({
+        documentType: side === 'front' ? 'licenseFront' : 'licenseBack',
+        source,
+      });
+      if (!upload) {
         return;
       }
-      if (side === 'front') setLicenseFront(url);
-      else setLicenseBack(url);
+      if (side === 'front') setLicenseFront(upload.url);
+      else setLicenseBack(upload.url);
+      console.log('[vehicle-detail] license-upload-success', {
+        side,
+        source: upload.source,
+        endpoint: upload.endpoint,
+        provider: upload.provider ?? 'unknown',
+        storageKey: upload.storageKey ?? null,
+      });
     } catch (e) {
-      Alert.alert(
-        'Error al subir foto',
-        'No se pudo subir la imagen. Verifica que la app tiene permiso para acceder a tu galería e intenta de nuevo.',
-        [{ text: 'Entendido' }]
-      );
-      setError('No se pudo subir la imagen. Intenta de nuevo.');
+      const message = getUploadErrorMessage(e);
+      console.error('[vehicle-detail] license-upload-failed', {
+        side,
+        stage: e instanceof UploadDocumentError ? e.stage : 'unknown',
+        message,
+        error: e,
+      });
+      setError(message);
     } finally {
       setUploading(false);
     }
