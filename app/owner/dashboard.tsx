@@ -2,20 +2,15 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { MoviLogo } from '../../src/components/MoviLogo';
-import { BrandTagline } from '../../src/components/BrandTagline';
 import { BrandedLoadingView } from '../../src/components/BrandedLoadingView';
 import { Card, ScreenHeader } from '../../src/components/FormUI';
-import { useAuth, formatTime } from '../../src/context/AuthContext';
+import { useAuth } from '../../src/context/AuthContext';
 import { useProfileBootstrap } from '../../src/hooks/useProfileBootstrap';
 import {
   getOwnerByUserId,
-  getOwnerDashboardStats,
-  getOwnerVehicles,
   getOwnerDrivers,
+  getOwnerDashboardStats,
   getOwnerSessions,
-  getTripHistory,
-  formatDuration,
 } from '../../src/services/profileData';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
@@ -25,115 +20,104 @@ export default function OwnerDashboard() {
   const { loading, error } = useProfileBootstrap('owner');
   const owner = user ? getOwnerByUserId(user.userId) : null;
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ScreenHeader title="Dashboard dueño" />
-        <BrandedLoadingView message="Cargando datos…" />
-      </SafeAreaView>
-    );
-  }
+  if (loading) return <BrandedLoadingView message="Cargando…" />;
 
   if (!owner) {
     return (
       <SafeAreaView style={styles.container}>
-        <ScreenHeader title="Dashboard dueño" />
-        <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.greeting}>Registra tu perfil de dueño primero</Text>
+        <ScreenHeader title="Inicio" />
+        <View style={styles.emptyState}>
+          <Ionicons name="person-add-outline" size={48} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>Completa tu registro</Text>
+          <Text style={styles.emptyDesc}>Necesitas completar tu perfil de dueño para continuar.</Text>
           <TouchableOpacity
-            style={styles.menuItem}
+            style={styles.emptyBtn}
             onPress={() => router.push('/auth/register-owner' as never)}
           >
-            <Ionicons name="person-add" size={22} color={colors.text} />
-            <Text style={styles.menuText}>Completar registro de dueño</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            <Text style={styles.emptyBtnText}>Completar registro</Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </SafeAreaView>
     );
   }
 
-  const vehicles = getOwnerVehicles(owner.id);
   const drivers = getOwnerDrivers(owner.id);
   const sessions = getOwnerSessions(owner.id);
-
-  const ownerStats = getOwnerDashboardStats(owner.id);
-  const totalCash = ownerStats?.income ?? sessions.reduce((a, s) => a + s.totalCashCollected, 0);
-  const totalTrips = ownerStats?.trips ?? sessions.reduce((a, s) => a + s.totalTrips, 0);
-  const totalKm = ownerStats?.kilometers ?? sessions.reduce((a, s) => a + s.totalKm, 0);
-  const totalDeliveries = ownerStats?.deliveries ?? 0;
+  const stats = getOwnerDashboardStats(owner.id);
   const activeDrivers = drivers.filter((d) =>
     sessions.some((s) => s.driverId === d.id && !s.disconnectedAt)
-  ).length;
+  );
+  const todayIncome = stats?.income ?? 0;
+  const todayTrips = stats?.trips ?? 0;
+  const todayKm = stats?.kilometers ?? 0;
 
-  const tripHistory = getTripHistory({ ownerId: owner.id });
+  const statusColor =
+    owner.status === 'approved' ? colors.online
+    : owner.status === 'suspended' ? colors.danger
+    : colors.warning;
 
-  const menu = [
-    { title: 'Mis unidades', route: '/owner/vehicles', icon: 'car' as const },
-    { title: 'Reportes', route: '/owner/reports', icon: 'bar-chart' as const },
-    { title: 'Centro de actividad', route: '/activity', icon: 'pulse' as const },
-  ];
+  const statusLabel =
+    owner.status === 'approved' ? 'Aprobado'
+    : owner.status === 'suspended' ? 'Suspendido'
+    : owner.status === 'pending' ? 'Pendiente de aprobación'
+    : owner.status;
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScreenHeader title="Dashboard dueño" />
+      <ScreenHeader title={`Hola, ${owner.name}`} />
       <ScrollView contentContainerStyle={styles.content}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <View style={styles.logoWrap}>
-          <MoviLogo size="md" />
-        </View>
-        <BrandTagline variant="secondary" />
-        <Text style={styles.greeting}>Hola, {owner.name}</Text>
-        <Text style={styles.status}>Estado: {owner.status}</Text>
-
-        <View style={styles.statsGrid}>
-          <Card style={styles.stat}><Text style={styles.statValue}>${totalCash.toFixed(2)}</Text><Text style={styles.statLabel}>Total cobrado</Text></Card>
-          <Card style={styles.stat}><Text style={styles.statValue}>{totalTrips}</Text><Text style={styles.statLabel}>Viajes</Text></Card>
-          <Card style={styles.stat}><Text style={styles.statValue}>{totalKm.toFixed(1)}</Text><Text style={styles.statLabel}>Km</Text></Card>
-          <Card style={styles.stat}><Text style={styles.statValue}>{totalDeliveries}</Text><Text style={styles.statLabel}>Entregas</Text></Card>
-          <Card style={styles.stat}><Text style={styles.statValue}>{(ownerStats?.activeHours ?? 0).toFixed(0)}h</Text><Text style={styles.statLabel}>Horas activas</Text></Card>
-          <Card style={styles.stat}><Text style={styles.statValue}>{activeDrivers}</Text><Text style={styles.statLabel}>Conductores activos</Text></Card>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <Text style={styles.statusText}>{statusLabel}</Text>
         </View>
 
-        <Text style={styles.section}>Historial de viajes ({tripHistory.length})</Text>
-        {tripHistory.slice(0, 5).map((trip) => (
-          <Card key={trip.id} style={{ marginBottom: spacing.sm }}>
-            <Text style={styles.driverName}>{trip.originName} → {trip.destinationName}</Text>
-            <Text style={styles.sessionLine}>{trip.driverName} · ${trip.price.toFixed(2)} · {trip.distanceKm.toFixed(1)} km</Text>
+        <Text style={styles.sectionTitle}>Hoy</Text>
+        <View style={styles.statsRow}>
+          <Card style={styles.stat}>
+            <Text style={styles.statValue}>${todayIncome.toFixed(2)}</Text>
+            <Text style={styles.statLabel}>Cobrado</Text>
           </Card>
-        ))}
+          <Card style={styles.stat}>
+            <Text style={styles.statValue}>{todayTrips}</Text>
+            <Text style={styles.statLabel}>Viajes</Text>
+          </Card>
+          <Card style={styles.stat}>
+            <Text style={styles.statValue}>{todayKm.toFixed(0)}</Text>
+            <Text style={styles.statLabel}>Km</Text>
+          </Card>
+        </View>
 
-        <Text style={styles.section}>Sesiones del día</Text>
-        {drivers.map((driver) => {
-          const summary = getDailySessionSummary(driver.id);
-          return (
-            <Card key={driver.id} style={{ marginBottom: spacing.md }}>
-              <Text style={styles.driverName}>{driver.name}</Text>
-              {summary.sessions.map((sess, i) => (
-                <View key={sess.sessionId} style={styles.sessionBlock}>
-                  <Text style={styles.sessionTitle}>Sesión {i + 1}</Text>
-                  <Text style={styles.sessionLine}>Conectado: {formatTime(sess.connectedAt)}</Text>
-                  <Text style={styles.sessionLine}>
-                    Desconectado: {sess.disconnectedAt ? formatTime(sess.disconnectedAt) : 'En curso'}
-                  </Text>
-                  <Text style={styles.sessionLine}>Duración: {formatDuration(sess.durationMinutes)}</Text>
-                  <Text style={styles.sessionLine}>Viajes: {sess.totalTrips} · Km: {sess.totalKm} · ${sess.totalCashCollected.toFixed(2)}</Text>
+        <Text style={styles.sectionTitle}>Conductores activos ({activeDrivers.length})</Text>
+        {activeDrivers.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyCardText}>Ningún conductor en línea ahora</Text>
+          </Card>
+        ) : (
+          activeDrivers.map((driver) => {
+            const summary = getDailySessionSummary(driver.id);
+            return (
+              <Card key={driver.id} style={styles.driverCard}>
+                <View style={styles.driverRow}>
+                  <View style={styles.onlineDot} />
+                  <Text style={styles.driverName}>{driver.name}</Text>
                 </View>
-              ))}
-              <Text style={styles.summary}>
-                Resumen: {summary.connectionCount} conexiones · {summary.totalHours}h · {summary.totalTrips} viajes · ${summary.totalCashCollected.toFixed(2)}
-              </Text>
-            </Card>
-          );
-        })}
+                <Text style={styles.driverStats}>
+                  ${summary.totalCashCollected.toFixed(2)} · {summary.totalTrips} viajes hoy
+                </Text>
+              </Card>
+            );
+          })
+        )}
 
-        {menu.map((item) => (
-          <TouchableOpacity key={item.route} style={styles.menuItem} onPress={() => router.push(item.route as never)}>
-            <Ionicons name={item.icon} size={22} color={colors.text} />
-            <Text style={styles.menuText}>{item.title}</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        ))}
+        <TouchableOpacity
+          style={styles.activityBtn}
+          onPress={() => router.push('/activity' as never)}
+        >
+          <Ionicons name="pulse-outline" size={20} color={colors.primary} />
+          <Text style={styles.activityBtnText}>Ver actividad en vivo</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -141,21 +125,32 @@ export default function OwnerDashboard() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg },
-  logoWrap: { alignItems: 'center', marginBottom: spacing.xs },
-  greeting: { ...typography.subtitle, color: colors.text, marginTop: spacing.sm },
-  status: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg, textTransform: 'capitalize' },
-  error: { ...typography.caption, color: colors.danger, marginBottom: spacing.md },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
-  stat: { width: '48%', alignItems: 'center' },
+  content: { padding: spacing.lg, gap: spacing.md },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { ...typography.caption, color: colors.textSecondary, textTransform: 'capitalize' },
+  sectionTitle: { ...typography.subtitle, color: colors.text },
+  statsRow: { flexDirection: 'row', gap: spacing.sm },
+  stat: { flex: 1, alignItems: 'center', paddingVertical: spacing.md },
   statValue: { ...typography.subtitle, color: colors.text },
-  statLabel: { ...typography.caption, color: colors.textSecondary, marginTop: 4 },
-  section: { ...typography.subtitle, color: colors.text, marginBottom: spacing.md },
-  driverName: { ...typography.bodyMedium, color: colors.text, marginBottom: spacing.sm },
-  sessionBlock: { backgroundColor: colors.borderLight, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm },
-  sessionTitle: { ...typography.label, color: colors.text },
-  sessionLine: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  summary: { ...typography.caption, color: colors.text, marginTop: spacing.sm, fontWeight: '600' },
-  menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radius.lg, marginBottom: spacing.sm, gap: spacing.md },
-  menuText: { ...typography.body, color: colors.text, flex: 1 },
+  statLabel: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  driverCard: { gap: spacing.xs },
+  driverRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
+  driverName: { ...typography.bodyMedium, color: colors.text },
+  driverStats: { ...typography.caption, color: colors.textSecondary },
+  activityBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: radius.lg,
+    padding: spacing.lg, gap: spacing.md, marginTop: spacing.sm,
+  },
+  activityBtnText: { ...typography.body, color: colors.primary, flex: 1 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
+  emptyTitle: { ...typography.subtitle, color: colors.text },
+  emptyDesc: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
+  emptyBtn: { backgroundColor: colors.primary, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.xl },
+  emptyBtnText: { ...typography.bodyMedium, color: colors.brandWhite },
+  emptyCard: { alignItems: 'center', paddingVertical: spacing.lg },
+  emptyCardText: { ...typography.caption, color: colors.textMuted },
+  error: { ...typography.caption, color: colors.danger },
 });
