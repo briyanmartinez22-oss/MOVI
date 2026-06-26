@@ -1,0 +1,98 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { SESSION_KEYS } from './authService';
+import { getApiUrl } from './api/config';
+
+export type UploadAsset = {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  file?: File;
+};
+
+export type NativeFormFile = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
+export function inferMimeType(uri: string, fallback?: string | null): string {
+  if (fallback && fallback.trim()) return fallback;
+  const lower = uri.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.heic')) return 'image/heic';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
+export function inferFileName(uri: string, provided?: string | null): string {
+  if (provided && provided.trim()) return provided;
+  const clean = uri.split('?')[0];
+  const last = clean.split('/').pop();
+  if (last && last.includes('.')) return last;
+  const ext =
+    clean.toLowerCase().endsWith('.png') ? 'png' :
+    clean.toLowerCase().endsWith('.heic') ? 'heic' :
+    clean.toLowerCase().endsWith('.webp') ? 'webp' :
+    'jpg';
+  return `upload-${Date.now()}.${ext}`;
+}
+
+export async function sendUploadRequest(
+  fileValue: File | NativeFormFile,
+  uri: string,
+  resolvedName: string,
+  resolvedType: string,
+  documentType?: string,
+  options?: { directWebFile?: boolean }
+): Promise<string> {
+  const token = await AsyncStorage.getItem(SESSION_KEYS.authToken);
+  const apiBase = getApiUrl().replace(/\/$/, '');
+
+  const formData = new FormData();
+  formData.append('file', fileValue as any);
+  if (documentType) {
+    formData.append('documentType', documentType);
+  }
+
+  console.log('[UPLOAD] starting', {
+    platform: Platform.OS,
+    uri,
+    resolvedName,
+    resolvedType,
+    documentType,
+    apiBase,
+    hasToken: Boolean(token),
+    directWebFile: Boolean(options?.directWebFile),
+  });
+
+  const res = await fetch(`${apiBase}/uploads`, {
+    method: 'POST',
+    headers: {
+      Authorization: token ? `Bearer ${token}` : '',
+      Accept: 'application/json',
+    },
+    body: formData,
+  });
+
+  const rawText = await res.text();
+  console.log('[UPLOAD] response status', res.status);
+  console.log('[UPLOAD] response body', rawText);
+
+  let json: any = null;
+  try {
+    json = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    throw new Error(`UPLOAD_BAD_RESPONSE_${res.status}::${rawText}`);
+  }
+
+  if (!res.ok) {
+    throw new Error(json?.error || `UPLOAD_HTTP_${res.status}`);
+  }
+
+  if (!json?.ok || !json?.data?.url) {
+    throw new Error(json?.error || 'UPLOAD_NO_URL_RETURNED');
+  }
+
+  return json.data.url as string;
+}
