@@ -46,7 +46,7 @@ export default function PassengerHome() {
       <SafeAreaView style={styles.header} edges={['top']}>
         <View style={styles.headerRow}>
           <View style={styles.headerSide}>
-            <TouchableOpacity style={styles.menuBtn} onPress={() => router.replace('/')}>
+            <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/passenger/profile' as never)}>
               <Ionicons name="menu" size={22} color={colors.text} />
             </TouchableOpacity>
           </View>

@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, View, ActivityIndicator, Alert, Animated } from 'react-native';
+import { useRef, useEffect } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { PrimaryButton, LegalConsentCheckbox } from '../../src/components';
 import { validateRegistrationConsent } from '../../src/utils/registrationConsent';
 import { Card, FormInput, ScreenHeader } from '../../src/components/FormUI';
@@ -54,6 +56,8 @@ export default function RegisterDriverCodeScreen() {
   const [birthDate, setBirthDate] = useState('');
   const [licenseFront, setLicenseFront] = useState('');
   const [licenseBack, setLicenseBack] = useState('');
+  const [uploadingFront, setUploadingFront] = useState(false);
+  const [uploadingBack, setUploadingBack] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [error, setError] = useState('');
@@ -85,11 +89,29 @@ export default function RegisterDriverCodeScreen() {
   };
 
   const uploadLicense = async (side: 'front' | 'back') => {
-    const { pickAndUploadDocument } = await import('../../src/services/uploadService');
-    const url = await pickAndUploadDocument(side === 'front' ? 'licenseFront' : 'licenseBack');
-    if (!url) return;
-    if (side === 'front') setLicenseFront(url);
-    else setLicenseBack(url);
+    const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
+    setUploading(true);
+    setError('');
+    try {
+      const { pickAndUploadDocument } = await import('../../src/services/uploadService');
+      const url = await pickAndUploadDocument(
+        side === 'front' ? 'licenseFront' : 'licenseBack'
+      );
+      if (!url) {
+        setUploading(false);
+        return;
+      }
+      if (side === 'front') setLicenseFront(url);
+      else setLicenseBack(url);
+    } catch {
+      Alert.alert(
+        'Error al subir foto',
+        'No se pudo subir la imagen. Verifica que la app tiene permiso para acceder a tu galería e intenta de nuevo.',
+        [{ text: 'Entendido' }]
+      );
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleRegister = async () => {
@@ -198,21 +220,86 @@ export default function RegisterDriverCodeScreen() {
               placeholder="1990-05-15"
             />
             <Text style={styles.section}>Licencia de conducir (obligatoria)</Text>
-            <TouchableOpacity style={styles.docBtn} onPress={() => void uploadLicense('front')}>
-              <Text style={styles.docLabel}>Licencia — frontal</Text>
-              <Text style={styles.docAction}>{licenseFront ? '✓ Subida' : 'Subir'}</Text>
+            {/* Licencia frontal */}
+            <TouchableOpacity
+              style={[
+                styles.docRow,
+                licenseFront ? styles.docRowDone : null,
+              ]}
+              onPress={() => void uploadLicense('front')}
+              disabled={uploadingFront}
+              activeOpacity={0.7}
+            >
+              <View style={styles.docLeft}>
+                {uploadingFront ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : licenseFront ? (
+                  <View style={styles.checkCircle}>
+                    <Ionicons name="checkmark" size={13} color="#fff" />
+                  </View>
+                ) : (
+                  <Ionicons name="camera-outline" size={18} color={colors.textMuted} />
+                )}
+                <Text style={[styles.docLabel, licenseFront ? styles.docLabelDone : null]}>
+                  Licencia — frontal
+                </Text>
+              </View>
+              <Text style={[styles.docAction, licenseFront ? styles.docActionDone : null]}>
+                {uploadingFront ? 'Subiendo…' : licenseFront ? 'Subida ✓' : 'Subir foto'}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.docBtn} onPress={() => void uploadLicense('back')}>
-              <Text style={styles.docLabel}>Licencia — trasera</Text>
-              <Text style={styles.docAction}>{licenseBack ? '✓ Subida' : 'Subir'}</Text>
+
+            {/* Licencia trasera */}
+            <TouchableOpacity
+              style={[
+                styles.docRow,
+                licenseBack ? styles.docRowDone : null,
+              ]}
+              onPress={() => void uploadLicense('back')}
+              disabled={uploadingBack}
+              activeOpacity={0.7}
+            >
+              <View style={styles.docLeft}>
+                {uploadingBack ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : licenseBack ? (
+                  <View style={styles.checkCircle}>
+                    <Ionicons name="checkmark" size={13} color="#fff" />
+                  </View>
+                ) : (
+                  <Ionicons name="camera-outline" size={18} color={colors.textMuted} />
+                )}
+                <Text style={[styles.docLabel, licenseBack ? styles.docLabelDone : null]}>
+                  Licencia — trasera
+                </Text>
+              </View>
+              <Text style={[styles.docAction, licenseBack ? styles.docActionDone : null]}>
+                {uploadingBack ? 'Subiendo…' : licenseBack ? 'Subida ✓' : 'Subir foto'}
+              </Text>
             </TouchableOpacity>
+
+            {/* Barra de progreso */}
+            <View style={styles.progressRow}>
+              <View style={[styles.progressDot, licenseFront ? styles.progressDotDone : null]} />
+              <View style={[styles.progressLine, (licenseFront && licenseBack) ? styles.progressLineDone : null]} />
+              <View style={[styles.progressDot, licenseBack ? styles.progressDotDone : null]} />
+            </View>
+            <Text style={styles.progressLabel}>
+              {!licenseFront && !licenseBack
+                ? 'Sube ambas fotos para continuar'
+                : !licenseFront
+                  ? 'Falta la foto frontal'
+                  : !licenseBack
+                    ? 'Falta la foto trasera'
+                    : '¡Listo! Ya puedes registrarte'}
+            </Text>
             <LegalConsentCheckbox
               termsAccepted={termsAccepted}
               privacyAccepted={privacyAccepted}
               onTermsChange={setTermsAccepted}
               onPrivacyChange={setPrivacyAccepted}
             />
-            <PrimaryButton title="Enviar registro" onPress={() => void handleRegister()} loading={loading} />
+            <PrimaryButton title="Enviar registro" onPress={() => void handleRegister()} loading={loading} disabled={!licenseFront || !licenseBack || loading} />
           </>
         )}
 
@@ -229,16 +316,45 @@ const styles = StyleSheet.create({
   section: { ...typography.subtitle, color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm },
   label: { ...typography.body, color: colors.text, marginTop: spacing.xs },
   error: { color: colors.danger, marginTop: spacing.md },
-  docBtn: {
+  docRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: colors.borderLight,
     padding: spacing.md,
     borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     marginBottom: spacing.sm,
   },
+  docRowDone: {
+    backgroundColor: '#22c55e12',
+    borderColor: '#22c55e40',
+  },
+  docLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
+  checkCircle: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: '#22c55e',
+    alignItems: 'center', justifyContent: 'center',
+  },
   docLabel: { ...typography.body, color: colors.text },
-  docAction: { ...typography.caption, color: colors.primary },
+  docLabelDone: { color: '#15803d', fontWeight: '600' },
+  docAction: { ...typography.caption, color: colors.textMuted },
+  docActionDone: { color: '#22c55e', fontWeight: '600' },
+  progressRow: {
+    flexDirection: 'row', alignItems: 'center',
+    marginVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+  },
+  progressDot: {
+    width: 11, height: 11, borderRadius: 6,
+    backgroundColor: colors.borderLight,
+    borderWidth: 2, borderColor: colors.textMuted,
+  },
+  progressDotDone: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
+  progressLine: { flex: 1, height: 3, backgroundColor: colors.borderLight, marginHorizontal: 4 },
+  progressLineDone: { backgroundColor: '#22c55e' },
+  progressLabel: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.sm },
   phoneLabel: { ...typography.caption, color: colors.textMuted },
   phoneValue: { ...typography.body, color: colors.text, marginBottom: spacing.md },
 });
