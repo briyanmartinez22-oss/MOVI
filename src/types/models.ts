@@ -198,6 +198,8 @@ export function authUserLegacy(user: AuthUser) {
 export interface OwnerDocuments {
   duiFront?: string;
   duiBack?: string;
+  licenseFront?: string;
+  licenseBack?: string;
   selfie?: string;
   license?: string;
   registrationCard?: string;

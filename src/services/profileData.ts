@@ -205,31 +205,15 @@ export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: s
 
   let owner = profiles.owner;
 
-  console.log('[OWNER_PROFILE] fetchUserProfiles result', {
-    hasUser: Boolean(currentUser),
-    hasOwner: Boolean(owner),
-    ownerUserId: owner?.userId ?? null,
-    sessionUserId: currentUser.userId,
-    userRole: currentUser.role,
-  });
-
   if (!owner && currentUser.role === 'owner') {
     const cachedOwner = resolveCurrentProfiles().owner;
     if (cachedOwner?.id) {
       const cachedUserId = cachedOwner.userId?.trim();
       if (!cachedUserId || cachedUserId === currentUser.userId) {
         owner = { ...cachedOwner, userId: cachedUserId || currentUser.userId };
-        console.log('[OWNER_PROFILE] using cached owner fallback', {
-          ownerId: owner.id,
-          ownerUserId: owner.userId,
-        });
       }
     }
-
-    if (!owner) {
-      // TODO: no dedicated GET /owners/me profile endpoint exists; owner must come from /users/me/profiles.
-      console.log('[OWNER_PROFILE] owner session without owner profile from API or cache');
-    }
+    // TODO: no dedicated GET /owners/me profile endpoint exists; owner must come from /users/me/profiles.
   }
 
   const driverRaw = profiles.driver as (DriverProfileRecord & {
@@ -266,11 +250,6 @@ export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: s
 
   const history = await api.fetchTripHistoryAsync();
   const business = 'business' in profiles ? profiles.business : null;
-
-  console.log('[OWNER_PROFILE] setting profile cache', {
-    hasOwner: Boolean(owner),
-    ownerUserId: owner?.userId ?? null,
-  });
 
   setProfileCache({
     user: currentUser,
