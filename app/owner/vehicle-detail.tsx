@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -263,7 +263,7 @@ export default function VehicleDetail() {
 
             {submitted ? (
               <View style={styles.successBanner}>
-                <Ionicons name="checkmark-circle" size={16} color={colors.success ?? '#22c55e'} />
+                <Ionicons name="checkmark-circle" size={16} color={colors.online} />
                 <Text style={styles.successBannerText}>
                   Licencia enviada correctamente. Te notificaremos cuando sea aprobada.
                 </Text>
@@ -298,7 +298,7 @@ export default function VehicleDetail() {
 
         {driverApproved ? (
           <View style={styles.successBanner}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.success ?? '#22c55e'} />
+            <Ionicons name="checkmark-circle" size={18} color={colors.online} />
             <Text style={styles.successBannerText}>
               Ya puedes operar esta unidad como conductor.
             </Text>
