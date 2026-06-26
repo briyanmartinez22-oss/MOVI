@@ -128,7 +128,7 @@ export default function DriverHome() {
   if (profileLoading) return <BrandedLoadingView message="Cargando perfil…" />;
 
   // ESTADO A — Pendiente de aprobación
-  if (driverRecord && driverRecord.status === 'pending') {
+  if (driverRecord && (driverRecord.status === 'pending' || driverRecord.status === 'in_review')) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.pendingScreen}>
@@ -217,7 +217,7 @@ export default function DriverHome() {
 
           {subscription && (
             <Text style={styles.subStatus}>
-              Suscripción: {formatSubscriptionStatus(subscription.status)}
+              Suscripción: {formatSubscriptionStatus(subscription)}
             </Text>
           )}
 
@@ -238,7 +238,7 @@ export default function DriverHome() {
           )}
 
           {activeTrip && isDriverOnline && (
-            <CancelTripButton by="driver" style={{ marginBottom: spacing.sm }} />
+            <CancelTripButton style={{ marginBottom: spacing.sm }} />
           )}
 
           <PrimaryButton

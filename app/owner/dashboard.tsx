@@ -52,7 +52,7 @@ export default function OwnerDashboard() {
   const todayKm = stats?.kilometers ?? 0;
 
   const statusColor =
-    owner.status === 'approved' ? colors.online
+    owner.status === 'approved' ? colors.success
     : owner.status === 'suspended' ? colors.danger
     : colors.warning;
 
@@ -64,7 +64,7 @@ export default function OwnerDashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScreenHeader title={`Hola, ${owner.name}`} />
+      <ScreenHeader title={`Hola, ${owner.firstName || owner.name}`} />
       <ScrollView contentContainerStyle={styles.content}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.statusRow}>

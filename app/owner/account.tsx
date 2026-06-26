@@ -45,16 +45,16 @@ export default function OwnerAccount() {
           <View style={styles.avatar}>
             <Ionicons name="person" size={32} color={colors.textMuted} />
           </View>
-          <Text style={styles.name}>{owner?.name ?? user?.fullName ?? '—'}</Text>
-          <Text style={styles.phone}>{user?.phoneNumber ?? '—'}</Text>
+          <Text style={styles.name}>{owner?.name ?? user?.name ?? '—'}</Text>
+          <Text style={styles.phone}>{user?.phone ?? '—'}</Text>
           <StatusBadge status={statusLabel} />
         </Card>
 
         <Text style={styles.sectionTitle}>Información</Text>
         <Card>
           <InfoRow label="Nombre" value={owner?.name ?? '—'} />
-          <InfoRow label="Teléfono" value={user?.phoneNumber ?? '—'} />
-          <InfoRow label="Correo" value="No registrado" />
+          <InfoRow label="Teléfono" value={user?.phone ?? '—'} />
+          <InfoRow label="Correo" value={owner?.email ?? 'No registrado'} />
           <InfoRow label="DUI" value={owner?.dui ?? '—'} />
         </Card>
 
