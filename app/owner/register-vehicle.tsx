@@ -14,6 +14,7 @@ import {
   submitVehicleVerification,
 } from '../../src/services/api';
 import { getOwnerByUserId } from '../../src/services/profileData';
+import { pickAndUploadDocument } from '../../src/services/uploadService';
 import { VehicleType } from '../../src/types/models';
 import { isCargoVehicleType, VEHICLE_TYPE_META, VEHICLE_TYPE_OPTIONS } from '../../src/utils/vehicleTypes';
 import { colors, typography, spacing } from '../../src/theme';
@@ -79,7 +80,6 @@ export default function RegisterVehicle() {
   };
 
   const uploadDoc = async (key: typeof VEHICLE_DOCS[number]) => {
-    const { pickAndUploadDocument } = await import('../../src/services/uploadService');
     const url = await pickAndUploadDocument(key);
     if (!url) return;
     const res = await uploadVehicleDocuments(vehicleId, {

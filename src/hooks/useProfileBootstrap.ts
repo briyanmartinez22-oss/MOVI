@@ -16,9 +16,22 @@ export function useProfileBootstrap(scope: 'full' | 'owner' = 'full') {
     }
     setLoading(true);
     setError(null);
-    const result = scope === 'owner' ? await refreshOwnerFleet() : await refreshProfilesFromApi();
-    if (!result.ok) {
-      setError(result.error ?? 'No se pudo conectar con el servidor.');
+    if (scope === 'owner') {
+      const profilesResult = await refreshProfilesFromApi();
+      if (!profilesResult.ok) {
+        setError(profilesResult.error ?? 'No se pudo conectar con el servidor.');
+        setLoading(false);
+        return;
+      }
+      const fleetResult = await refreshOwnerFleet();
+      if (!fleetResult.ok) {
+        setError(fleetResult.error ?? 'No se pudo conectar con el servidor.');
+      }
+    } else {
+      const result = await refreshProfilesFromApi();
+      if (!result.ok) {
+        setError(result.error ?? 'No se pudo conectar con el servidor.');
+      }
     }
     setLoading(false);
   }, [user, scope]);

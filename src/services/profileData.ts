@@ -43,8 +43,17 @@ export function getDriverById(driverId: string): DriverProfileRecord | undefined
 
 export function getOwnerByUserId(userId: string): Owner | undefined {
   if (useMockApi()) return mock.getOwnerByUserId(userId);
-  const { owner } = resolveCurrentProfiles();
-  return owner?.userId === userId ? owner : undefined;
+  const { owner, user } = resolveCurrentProfiles();
+  if (!owner) return undefined;
+  if (owner.userId === userId) return owner;
+  if (
+    user?.userId === userId &&
+    user.role === 'owner' &&
+    (!owner.userId || owner.userId.trim() === '')
+  ) {
+    return { ...owner, userId };
+  }
+  return undefined;
 }
 
 export function getOwnerById(ownerId: string): Owner | undefined {
@@ -191,7 +200,37 @@ export function getBusinessDashboardStats(businessId: string) {
 export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: string }> {
   if (useMockApi()) return { ok: true };
   const profiles = await api.fetchUserProfiles();
-  if (!profiles.user) return { ok: false, error: 'No se pudieron cargar los perfiles.' };
+  const currentUser = profiles.user;
+  if (!currentUser) return { ok: false, error: 'No se pudieron cargar los perfiles.' };
+
+  let owner = profiles.owner;
+
+  console.log('[OWNER_PROFILE] fetchUserProfiles result', {
+    hasUser: Boolean(currentUser),
+    hasOwner: Boolean(owner),
+    ownerUserId: owner?.userId ?? null,
+    sessionUserId: currentUser.userId,
+    userRole: currentUser.role,
+  });
+
+  if (!owner && currentUser.role === 'owner') {
+    const cachedOwner = resolveCurrentProfiles().owner;
+    if (cachedOwner?.id) {
+      const cachedUserId = cachedOwner.userId?.trim();
+      if (!cachedUserId || cachedUserId === currentUser.userId) {
+        owner = { ...cachedOwner, userId: cachedUserId || currentUser.userId };
+        console.log('[OWNER_PROFILE] using cached owner fallback', {
+          ownerId: owner.id,
+          ownerUserId: owner.userId,
+        });
+      }
+    }
+
+    if (!owner) {
+      // TODO: no dedicated GET /owners/me profile endpoint exists; owner must come from /users/me/profiles.
+      console.log('[OWNER_PROFILE] owner session without owner profile from API or cache');
+    }
+  }
 
   const driverRaw = profiles.driver as (DriverProfileRecord & {
     subscription?: Record<string, unknown>;
@@ -205,7 +244,7 @@ export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: s
       : null;
 
   let vehicles = getCachedVehicles();
-  if (profiles.owner) {
+  if (owner) {
     const res = await api.fetchOwnerVehicles();
     if (res.ok && res.data) {
       vehicles = res.data;
@@ -227,9 +266,15 @@ export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: s
 
   const history = await api.fetchTripHistoryAsync();
   const business = 'business' in profiles ? profiles.business : null;
+
+  console.log('[OWNER_PROFILE] setting profile cache', {
+    hasOwner: Boolean(owner),
+    ownerUserId: owner?.userId ?? null,
+  });
+
   setProfileCache({
-    user: profiles.user,
-    owner: profiles.owner,
+    user: currentUser,
+    owner,
     driver,
     business,
     vehicles,

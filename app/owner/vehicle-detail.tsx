@@ -17,6 +17,7 @@ import { Card, ScreenHeader, StatusBadge } from '../../src/components/FormUI';
 import { useProfileBootstrap } from '../../src/hooks/useProfileBootstrap';
 import { selfAssignOwnerAsDriver } from '../../src/services/api';
 import { getVehicle, getOwnerDrivers } from '../../src/services/profileData';
+import { pickAndUploadDocument } from '../../src/services/uploadService';
 import {
   canVehicleInviteDrivers,
   canVehicleOperate,
@@ -138,7 +139,6 @@ export default function VehicleDetail() {
     const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
     setUploading(true);
     try {
-      const { pickAndUploadDocument } = await import('../../src/services/uploadService');
       const url = await pickAndUploadDocument(
         side === 'front' ? 'licenseFront' : 'licenseBack'
       );

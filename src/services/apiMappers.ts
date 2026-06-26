@@ -1,6 +1,8 @@
 import type {
   DriverProfileRecord,
   DriverSubscription,
+  Owner,
+  OwnerDocuments,
   Vehicle,
   VehicleDocuments,
 } from '../types/models';
@@ -38,6 +40,45 @@ export function mapVehicle(raw: Record<string, unknown>): Vehicle {
     maxLoadKg: typeof raw.maxLoadKg === 'number' ? raw.maxLoadKg : undefined,
     bedLengthM: typeof raw.bedLengthM === 'number' ? raw.bedLengthM : undefined,
     hasCargoCover: typeof raw.hasCargoCover === 'boolean' ? raw.hasCargoCover : undefined,
+    createdAt: toIso((raw.createdAt as string | Date) ?? new Date().toISOString()),
+  };
+}
+
+function parseOwnerDocuments(value: unknown): OwnerDocuments {
+  if (value && typeof value === 'object') return value as OwnerDocuments;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as OwnerDocuments;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+export function mapOwner(
+  raw: Record<string, unknown> | null | undefined,
+  userIdFallback?: string
+): Owner | null {
+  if (!raw) return null;
+
+  const userId = String(raw.userId ?? userIdFallback ?? '').trim();
+  if (!String(raw.id ?? '').trim() || !userId) {
+    return null;
+  }
+
+  return {
+    id: String(raw.id),
+    userId,
+    name: String(raw.name ?? ''),
+    phone: String(raw.phone ?? ''),
+    dui: String(raw.dui ?? ''),
+    status: raw.status as Owner['status'],
+    documents: parseOwnerDocuments(raw.documents ?? raw.documentsJson),
+    specialCase: raw.specialCase as Owner['specialCase'],
+    ownershipProofImage: raw.ownershipProofImage
+      ? String(raw.ownershipProofImage)
+      : undefined,
     createdAt: toIso((raw.createdAt as string | Date) ?? new Date().toISOString()),
   };
 }

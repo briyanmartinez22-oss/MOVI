@@ -41,8 +41,9 @@ import {
   setProfileCache,
 } from '../profileCache';
 import { realtimeClient } from '../realtimeClient';
-import { mapSubscription, mapVehicle } from '../apiMappers';
+import { mapOwner, mapSubscription, mapVehicle } from '../apiMappers';
 import { normalizePhone } from '../../utils/platform';
+import { uploadFile } from '../uploadService';
 
 function authPhone(phone: string): string {
   return normalizePhone(phone) || phone.trim();
@@ -207,8 +208,13 @@ export async function registerOwner(
   );
   if (!res.ok || !res.data) return fail(res.error ?? 'Error al registrar');
   await persistAuthResponse(res.data.user, res.data.authToken);
-  setProfileCache({ owner: res.data.owner });
-  return ok({ user: res.data.user, owner: res.data.owner });
+  const owner = mapOwner(
+    res.data.owner as unknown as Record<string, unknown>,
+    res.data.user.userId
+  );
+  if (!owner) return fail('No se pudo normalizar el perfil del dueño.');
+  setProfileCache({ owner });
+  return ok({ user: res.data.user, owner });
 }
 
 export async function uploadOwnerDocuments(
@@ -1065,7 +1071,6 @@ export async function submitTripRatingApi(
 export async function uploadDocumentFile(uri: string, fileName?: string): Promise<ApiResponse<string>> {
   if (useMockApi()) return ok(`mock://${fileName ?? 'doc'}-${Date.now()}`);
   try {
-    const { uploadFile } = await import('../uploadService');
     const url = await uploadFile(uri, fileName);
     return ok(url);
   } catch (e) {
@@ -1270,13 +1275,18 @@ export async function fetchUserProfiles() {
     business: BusinessProfile | null;
   }>('/users/me/profiles');
   if (res.ok && res.data) {
-    setProfileCache({
+    const owner = mapOwner(
+      res.data.owner as Record<string, unknown> | null,
+      res.data.user?.userId
+    );
+    const normalized = {
       user: res.data.user,
-      owner: res.data.owner,
+      owner,
       driver: res.data.driver,
       business: res.data.business,
-    });
-    return res.data;
+    };
+    setProfileCache(normalized);
+    return normalized;
   }
   return resolveCachedProfiles();
 }

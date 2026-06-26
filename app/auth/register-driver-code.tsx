@@ -18,6 +18,7 @@ import { showSuccess } from '../../src/utils/feedback';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { normalizePhone } from '../../src/utils/platform';
 import { consumeRegistrationPassword } from '../../src/services/registrationPasswordDraft';
+import { pickAndUploadDocument } from '../../src/services/uploadService';
 import { colors, typography, spacing } from '../../src/theme';
 
 const INVITE_ERROR_LABELS: Record<string, string> = {
@@ -93,7 +94,6 @@ export default function RegisterDriverCodeScreen() {
     setUploading(true);
     setError('');
     try {
-      const { pickAndUploadDocument } = await import('../../src/services/uploadService');
       const url = await pickAndUploadDocument(
         side === 'front' ? 'licenseFront' : 'licenseBack'
       );

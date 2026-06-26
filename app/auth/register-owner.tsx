@@ -18,6 +18,7 @@ import { ContextualHelpLink } from '../../src/components/help/ContextualHelpLink
 import { SpecialCaseType } from '../../src/types/models';
 import { normalizePhone } from '../../src/utils/platform';
 import { consumeRegistrationPassword } from '../../src/services/registrationPasswordDraft';
+import { pickAndUploadDocument } from '../../src/services/uploadService';
 import { colors, typography, spacing } from '../../src/theme';
 
 const DOC_FIELDS_BY_TYPE = {
@@ -121,7 +122,6 @@ export default function RegisterOwnerScreen() {
     }
     setError('');
     try {
-      const { pickAndUploadDocument } = await import('../../src/services/uploadService');
       const url = await pickAndUploadDocument(key);
       if (!url) return;
       await uploadOwnerDocuments(id, { [key]: url });
