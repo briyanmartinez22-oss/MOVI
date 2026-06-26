@@ -115,12 +115,28 @@ export default function RegisterOwnerScreen() {
 
   const uploadDoc = async (key: 'duiFront' | 'duiBack' | 'licenseFront' | 'licenseBack') => {
     const id = ownerId || owner?.id;
-    if (!id) return;
-    const { pickAndUploadDocument } = await import('../../src/services/uploadService');
-    const url = await pickAndUploadDocument(key);
-    if (!url) return;
-    await uploadOwnerDocuments(id, { [key]: url });
-    refresh();
+    if (!id) {
+      setError('No se encontró el perfil del dueño para subir documentos.');
+      return;
+    }
+    setError('');
+    try {
+      const { pickAndUploadDocument } = await import('../../src/services/uploadService');
+      const url = await pickAndUploadDocument(key);
+      if (!url) return;
+      await uploadOwnerDocuments(id, { [key]: url });
+      refresh();
+    } catch (e: any) {
+      const message =
+        e?.message === 'MEDIA_LIBRARY_PERMISSION_DENIED'
+          ? 'La app no tiene permiso para abrir la galería.'
+          : e?.message === 'Archivo requerido (campo: file)'
+            ? 'La imagen se seleccionó, pero el archivo no se envió correctamente al servidor.'
+            : e?.message?.startsWith('UPLOAD_HTTP_')
+              ? 'El servidor rechazó la subida del documento.'
+              : 'Falló la subida del documento. Revisa /uploads y el storage.';
+      setError(message);
+    }
   };
 
   const submitVerification = async () => {
@@ -192,6 +208,7 @@ export default function RegisterOwnerScreen() {
                 <Text style={styles.docAction}>Subir foto</Text>
               </TouchableOpacity>
             ))}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
             <Text style={styles.sectionTitle}>Caso especial (opcional)</Text>
             {(['manual_review', 'family_authorization', 'company_owner', 'financed_vehicle', 'private_sale_contract', 'power_of_attorney'] as SpecialCaseType[]).map((c) => (
               <TouchableOpacity key={c} style={[styles.docBtn, specialCase === c && styles.docBtnActive]} onPress={() => setSpecialCase(c)}>
