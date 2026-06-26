@@ -113,12 +113,14 @@ jobs:
         working-directory: backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --detach
+          RAILWAY_SERVICE_ID: ${{ secrets.STAGING_BACKEND_SERVICE_ID }}
+        run: |
+          test -n "$RAILWAY_SERVICE_ID"
+          railway up --detach --service "$RAILWAY_SERVICE_ID"
 
       - name: Post-deploy smoke (staging)
         env:
           STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
-          DEMO_OTP_CODE: ${{ secrets.DEMO_OTP_CODE || '123456' }}
         run: |
           test -n "$STAGING_API_URL"
           for i in $(seq 1 30); do
