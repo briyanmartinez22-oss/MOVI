@@ -1,6 +1,15 @@
-import { useState } from 'react';
-import { Text, StyleSheet, TouchableOpacity, View, ActivityIndicator, Alert, Animated } from 'react-native';
-import { useRef, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +27,12 @@ import { showSuccess } from '../../src/utils/feedback';
 import { FIELD_HINTS } from '../../src/data/fieldHints';
 import { normalizePhone } from '../../src/utils/platform';
 import { consumeRegistrationPassword } from '../../src/services/registrationPasswordDraft';
+import {
+  getUploadErrorMessage,
+  pickAndUploadDocumentDetailed,
+  UploadDocumentError,
+  type UploadSource,
+} from '../../src/services/uploadService';
 import { colors, typography, spacing } from '../../src/theme';
 
 const INVITE_ERROR_LABELS: Record<string, string> = {
@@ -42,6 +57,139 @@ type InvitePreview = {
 
 type Step = 'code' | 'preview' | 'form';
 
+type UploadUiStatus = 'idle' | 'uploading' | 'success' | 'error';
+type LicenseSide = 'front' | 'back';
+type StoredUploadState = {
+  status: UploadUiStatus;
+  remoteUrl: string;
+  localUri: string;
+  error: string;
+  source?: UploadSource;
+};
+
+const LICENSE_UPLOAD_DRAFT_PREFIX = 'movi_driver_license_upload_v1';
+
+function createUploadState(remoteUrl = '', localUri = ''): StoredUploadState {
+  return {
+    status: remoteUrl ? 'success' : 'idle',
+    remoteUrl,
+    localUri,
+    error: '',
+  };
+}
+
+function restoreUploadState(input: unknown): StoredUploadState {
+  if (!input || typeof input !== 'object') return createUploadState();
+  const draft = input as Partial<StoredUploadState>;
+  const remoteUrl = typeof draft.remoteUrl === 'string' ? draft.remoteUrl : '';
+  const localUri = typeof draft.localUri === 'string' ? draft.localUri : '';
+  const source =
+    draft.source === 'camera' || draft.source === 'library'
+      ? draft.source
+      : undefined;
+  const fallbackStatus: UploadUiStatus = remoteUrl ? 'success' : 'idle';
+  const status: UploadUiStatus =
+    draft.status === 'idle' ||
+    draft.status === 'uploading' ||
+    draft.status === 'success' ||
+    draft.status === 'error'
+      ? draft.status
+      : fallbackStatus;
+
+  return {
+    status: status === 'uploading' ? fallbackStatus : status,
+    remoteUrl,
+    localUri,
+    error: typeof draft.error === 'string' ? draft.error : '',
+    source,
+  };
+}
+
+function normalizeUploadStateForSave(state: StoredUploadState): StoredUploadState {
+  return {
+    ...state,
+    status: state.status === 'uploading' ? (state.remoteUrl ? 'success' : 'idle') : state.status,
+  };
+}
+
+function sideLabel(side: LicenseSide): string {
+  return side === 'front' ? 'frontal' : 'trasera';
+}
+
+type LicenseRowProps = {
+  label: string;
+  state: StoredUploadState;
+  onPress: () => void;
+};
+
+function LicenseUploadRow({ label, state, onPress }: LicenseRowProps) {
+  const uploading = state.status === 'uploading';
+  const uploaded = state.status === 'success';
+  const failed = state.status === 'error';
+  const previewUri = state.localUri || state.remoteUrl;
+  const actionLabel = uploading
+    ? 'Subiendo...'
+    : uploaded
+      ? 'Foto subida'
+      : failed
+        ? 'Reintentar'
+        : 'Subir foto';
+
+  return (
+    <View style={styles.docRowWrap}>
+      <TouchableOpacity
+        style={[
+          styles.docRow,
+          uploaded ? styles.docRowDone : null,
+          failed ? styles.docRowError : null,
+        ]}
+        onPress={onPress}
+        disabled={uploading}
+        activeOpacity={0.7}
+      >
+        <View style={styles.docLeft}>
+          {uploading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : uploaded ? (
+            <View style={styles.checkCircle}>
+              <Ionicons name="checkmark" size={13} color="#fff" />
+            </View>
+          ) : failed ? (
+            <Ionicons name="alert-circle-outline" size={20} color={colors.danger} />
+          ) : (
+            <Ionicons name="camera-outline" size={18} color={colors.textMuted} />
+          )}
+          <Text
+            style={[
+              styles.docLabel,
+              uploaded ? styles.docLabelDone : null,
+              failed ? styles.docLabelError : null,
+            ]}
+          >
+            {label}
+          </Text>
+        </View>
+        <Text
+          style={[
+            styles.docAction,
+            uploaded ? styles.docActionDone : null,
+            failed ? styles.docActionError : null,
+          ]}
+        >
+          {actionLabel}
+        </Text>
+      </TouchableOpacity>
+      {uploaded && previewUri ? (
+        <View style={styles.previewCard}>
+          <Image source={{ uri: previewUri }} style={styles.previewImage} />
+          <Text style={styles.previewLabel}>Vista previa</Text>
+        </View>
+      ) : null}
+      {failed && state.error ? <Text style={styles.rowError}>{state.error}</Text> : null}
+    </View>
+  );
+}
+
 export default function RegisterDriverCodeScreen() {
   const router = useRouter();
   const { phone, verified, password: passwordParam } = useLocalSearchParams<{ phone: string; verified?: string; password?: string }>();
@@ -54,14 +202,99 @@ export default function RegisterDriverCodeScreen() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [birthDate, setBirthDate] = useState('');
-  const [licenseFront, setLicenseFront] = useState('');
-  const [licenseBack, setLicenseBack] = useState('');
-  const [uploadingFront, setUploadingFront] = useState(false);
-  const [uploadingBack, setUploadingBack] = useState(false);
+  const [frontUpload, setFrontUpload] = useState<StoredUploadState>(createUploadState());
+  const [backUpload, setBackUpload] = useState<StoredUploadState>(createUploadState());
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [error, setError] = useState('');
   const { loading, timedOut, run, retry } = useAsyncAction();
+  const licenseFront = frontUpload.remoteUrl;
+  const licenseBack = backUpload.remoteUrl;
+  const bothUploaded = Boolean(licenseFront && licenseBack);
+  const uploadDraftKey = useMemo(() => {
+    const normalizedPhone = normalizePhone(phone ?? '');
+    const normalizedCode = code.trim().toUpperCase() || 'pending';
+    return `${LICENSE_UPLOAD_DRAFT_PREFIX}:${normalizedPhone}:${normalizedCode}`;
+  }, [phone, code]);
+
+  useEffect(() => {
+    let active = true;
+    const loadDraft = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(uploadDraftKey);
+        if (!active) return;
+        if (!raw) {
+          setFrontUpload(createUploadState());
+          setBackUpload(createUploadState());
+          return;
+        }
+        const parsed = JSON.parse(raw) as { front?: unknown; back?: unknown };
+        const restoredFront = restoreUploadState(parsed.front);
+        const restoredBack = restoreUploadState(parsed.back);
+        setFrontUpload(restoredFront);
+        setBackUpload(restoredBack);
+        console.log('[register-driver-code] restored-upload-draft', {
+          key: uploadDraftKey,
+          hasFront: Boolean(restoredFront.remoteUrl),
+          hasBack: Boolean(restoredBack.remoteUrl),
+        });
+      } catch (draftError) {
+        console.error('[register-driver-code] failed-to-restore-upload-draft', draftError);
+      }
+    };
+    void loadDraft();
+    return () => {
+      active = false;
+    };
+  }, [uploadDraftKey]);
+
+  useEffect(() => {
+    const saveDraft = async () => {
+      try {
+        const payload = {
+          front: normalizeUploadStateForSave(frontUpload),
+          back: normalizeUploadStateForSave(backUpload),
+        };
+        const shouldClear =
+          payload.front.status === 'idle' &&
+          payload.back.status === 'idle' &&
+          !payload.front.remoteUrl &&
+          !payload.back.remoteUrl &&
+          !payload.front.error &&
+          !payload.back.error;
+        if (shouldClear) {
+          await AsyncStorage.removeItem(uploadDraftKey);
+          return;
+        }
+        await AsyncStorage.setItem(uploadDraftKey, JSON.stringify(payload));
+      } catch (draftError) {
+        console.error('[register-driver-code] failed-to-save-upload-draft', draftError);
+      }
+    };
+    void saveDraft();
+  }, [backUpload, frontUpload, uploadDraftKey]);
+
+  const selectUploadSource = async (): Promise<UploadSource | null> => {
+    if (Platform.OS === 'web') return 'library';
+    return new Promise((resolve) => {
+      let settled = false;
+      const complete = (value: UploadSource | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      Alert.alert(
+        'Selecciona origen',
+        'Puedes tomar una foto o elegir una imagen de tu galería.',
+        [
+          { text: 'Tomar foto', onPress: () => complete('camera') },
+          { text: 'Elegir de galería', onPress: () => complete('library') },
+          { text: 'Cancelar', style: 'cancel', onPress: () => complete(null) },
+        ],
+        { cancelable: true, onDismiss: () => complete(null) }
+      );
+    });
+  };
 
   const handleValidateCode = async () => {
     if (!code.trim()) {
@@ -88,29 +321,60 @@ export default function RegisterDriverCodeScreen() {
     setStep('preview');
   };
 
-  const uploadLicense = async (side: 'front' | 'back') => {
-    const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
-    setUploading(true);
+  const uploadLicense = async (side: LicenseSide) => {
+    const setUploadState = side === 'front' ? setFrontUpload : setBackUpload;
+    setUploadState((prev) => ({ ...prev, status: 'uploading', error: '' }));
     setError('');
+    const source = await selectUploadSource();
+    if (!source) {
+      setUploadState((prev) => ({
+        ...prev,
+        status: prev.remoteUrl ? 'success' : 'idle',
+        error: '',
+      }));
+      return;
+    }
+
     try {
-      const { pickAndUploadDocument } = await import('../../src/services/uploadService');
-      const url = await pickAndUploadDocument(
-        side === 'front' ? 'licenseFront' : 'licenseBack'
-      );
-      if (!url) {
-        setUploading(false);
+      const uploaded = await pickAndUploadDocumentDetailed({
+        documentType: side === 'front' ? 'licenseFront' : 'licenseBack',
+        source,
+      });
+      if (!uploaded) {
+        setUploadState((prev) => ({
+          ...prev,
+          status: prev.remoteUrl ? 'success' : 'idle',
+        }));
         return;
       }
-      if (side === 'front') setLicenseFront(url);
-      else setLicenseBack(url);
-    } catch {
-      Alert.alert(
-        'Error al subir foto',
-        'No se pudo subir la imagen. Verifica que la app tiene permiso para acceder a tu galería e intenta de nuevo.',
-        [{ text: 'Entendido' }]
-      );
-    } finally {
-      setUploading(false);
+      setUploadState({
+        status: 'success',
+        remoteUrl: uploaded.url,
+        localUri: uploaded.localUri,
+        error: '',
+        source: uploaded.source,
+      });
+      console.log('[register-driver-code] license-upload-success', {
+        side,
+        source: uploaded.source,
+        endpoint: uploaded.endpoint,
+        provider: uploaded.provider ?? 'unknown',
+        storageKey: uploaded.storageKey ?? null,
+      });
+    } catch (uploadError) {
+      const uploadMessage = getUploadErrorMessage(uploadError);
+      console.error('[register-driver-code] license-upload-failed', {
+        side,
+        stage: uploadError instanceof UploadDocumentError ? uploadError.stage : 'unknown',
+        message: uploadMessage,
+        error: uploadError,
+      });
+      setUploadState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: uploadMessage,
+      }));
+      setError(`Error en licencia ${sideLabel(side)}: ${uploadMessage}`);
     }
   };
 
@@ -123,7 +387,7 @@ export default function RegisterDriverCodeScreen() {
       setError('Completa nombre y apellidos');
       return;
     }
-    if (!licenseFront || !licenseBack) {
+    if (!bothUploaded) {
       setError('Sube licencia frontal y trasera');
       return;
     }
@@ -152,6 +416,7 @@ export default function RegisterDriverCodeScreen() {
         password: resolvedPassword,
       });
       if (res.ok) {
+        await AsyncStorage.removeItem(uploadDraftKey).catch(() => undefined);
         showSuccess('Registro enviado', 'Un administrador revisará tu licencia antes de activarte.');
         router.replace('/onboarding/driver');
       } else setError(res.error ?? 'Error al registrar');
@@ -221,77 +486,33 @@ export default function RegisterDriverCodeScreen() {
             />
             <Text style={styles.section}>Licencia de conducir (obligatoria)</Text>
             {/* Licencia frontal */}
-            <TouchableOpacity
-              style={[
-                styles.docRow,
-                licenseFront ? styles.docRowDone : null,
-              ]}
+            <LicenseUploadRow
+              label="Licencia — frontal"
+              state={frontUpload}
               onPress={() => void uploadLicense('front')}
-              disabled={uploadingFront}
-              activeOpacity={0.7}
-            >
-              <View style={styles.docLeft}>
-                {uploadingFront ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : licenseFront ? (
-                  <View style={styles.checkCircle}>
-                    <Ionicons name="checkmark" size={13} color="#fff" />
-                  </View>
-                ) : (
-                  <Ionicons name="camera-outline" size={18} color={colors.textMuted} />
-                )}
-                <Text style={[styles.docLabel, licenseFront ? styles.docLabelDone : null]}>
-                  Licencia — frontal
-                </Text>
-              </View>
-              <Text style={[styles.docAction, licenseFront ? styles.docActionDone : null]}>
-                {uploadingFront ? 'Subiendo…' : licenseFront ? 'Subida ✓' : 'Subir foto'}
-              </Text>
-            </TouchableOpacity>
+            />
 
             {/* Licencia trasera */}
-            <TouchableOpacity
-              style={[
-                styles.docRow,
-                licenseBack ? styles.docRowDone : null,
-              ]}
+            <LicenseUploadRow
+              label="Licencia — trasera"
+              state={backUpload}
               onPress={() => void uploadLicense('back')}
-              disabled={uploadingBack}
-              activeOpacity={0.7}
-            >
-              <View style={styles.docLeft}>
-                {uploadingBack ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : licenseBack ? (
-                  <View style={styles.checkCircle}>
-                    <Ionicons name="checkmark" size={13} color="#fff" />
-                  </View>
-                ) : (
-                  <Ionicons name="camera-outline" size={18} color={colors.textMuted} />
-                )}
-                <Text style={[styles.docLabel, licenseBack ? styles.docLabelDone : null]}>
-                  Licencia — trasera
-                </Text>
-              </View>
-              <Text style={[styles.docAction, licenseBack ? styles.docActionDone : null]}>
-                {uploadingBack ? 'Subiendo…' : licenseBack ? 'Subida ✓' : 'Subir foto'}
-              </Text>
-            </TouchableOpacity>
+            />
 
             {/* Barra de progreso */}
             <View style={styles.progressRow}>
-              <View style={[styles.progressDot, licenseFront ? styles.progressDotDone : null]} />
-              <View style={[styles.progressLine, (licenseFront && licenseBack) ? styles.progressLineDone : null]} />
-              <View style={[styles.progressDot, licenseBack ? styles.progressDotDone : null]} />
+              <View style={[styles.progressDot, frontUpload.status === 'success' ? styles.progressDotDone : null]} />
+              <View style={[styles.progressLine, bothUploaded ? styles.progressLineDone : null]} />
+              <View style={[styles.progressDot, backUpload.status === 'success' ? styles.progressDotDone : null]} />
             </View>
             <Text style={styles.progressLabel}>
-              {!licenseFront && !licenseBack
+              {!frontUpload.remoteUrl && !backUpload.remoteUrl
                 ? 'Sube ambas fotos para continuar'
-                : !licenseFront
+                : !frontUpload.remoteUrl
                   ? 'Falta la foto frontal'
-                  : !licenseBack
+                  : !backUpload.remoteUrl
                     ? 'Falta la foto trasera'
-                    : '¡Listo! Ya puedes registrarte'}
+                    : '¡Listo! Ya puedes enviar la verificación'}
             </Text>
             <LegalConsentCheckbox
               termsAccepted={termsAccepted}
@@ -299,7 +520,12 @@ export default function RegisterDriverCodeScreen() {
               onTermsChange={setTermsAccepted}
               onPrivacyChange={setPrivacyAccepted}
             />
-            <PrimaryButton title="Enviar registro" onPress={() => void handleRegister()} loading={loading} disabled={!licenseFront || !licenseBack || loading} />
+            <PrimaryButton
+              title={bothUploaded ? 'Enviar verificación' : 'Sube ambas fotos para continuar'}
+              onPress={() => void handleRegister()}
+              loading={loading}
+              disabled={!bothUploaded || loading}
+            />
           </>
         )}
 
@@ -316,6 +542,7 @@ const styles = StyleSheet.create({
   section: { ...typography.subtitle, color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm },
   label: { ...typography.body, color: colors.text, marginTop: spacing.xs },
   error: { color: colors.danger, marginTop: spacing.md },
+  docRowWrap: { marginBottom: spacing.sm },
   docRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -325,11 +552,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1.5,
     borderColor: 'transparent',
-    marginBottom: spacing.sm,
   },
   docRowDone: {
     backgroundColor: '#22c55e12',
     borderColor: '#22c55e40',
+  },
+  docRowError: {
+    backgroundColor: `${colors.danger}10`,
+    borderColor: `${colors.danger}55`,
   },
   docLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
   checkCircle: {
@@ -339,8 +569,24 @@ const styles = StyleSheet.create({
   },
   docLabel: { ...typography.body, color: colors.text },
   docLabelDone: { color: '#15803d', fontWeight: '600' },
+  docLabelError: { color: colors.danger, fontWeight: '600' },
   docAction: { ...typography.caption, color: colors.textMuted },
   docActionDone: { color: '#22c55e', fontWeight: '600' },
+  docActionError: { color: colors.danger, fontWeight: '600' },
+  rowError: { ...typography.caption, color: colors.danger, marginTop: spacing.xs },
+  previewCard: {
+    marginTop: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  previewImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    backgroundColor: colors.borderLight,
+  },
+  previewLabel: { ...typography.caption, color: colors.textSecondary },
   progressRow: {
     flexDirection: 'row', alignItems: 'center',
     marginVertical: spacing.sm,
