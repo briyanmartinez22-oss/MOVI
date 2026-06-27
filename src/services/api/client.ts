@@ -110,8 +110,20 @@ export async function apiFetch<T>(
     }
 
     if (!response.ok) {
+      const payloadRecord =
+        payload && typeof payload === 'object'
+          ? (payload as { error?: string; message?: string | string[]; data?: { error?: string } })
+          : null;
+      const nestedMessage =
+        typeof payloadRecord?.message === 'string'
+          ? payloadRecord.message
+          : Array.isArray(payloadRecord?.message)
+            ? payloadRecord.message.join(', ')
+            : undefined;
       const serverError =
-        payload?.error ??
+        payloadRecord?.error ??
+        payloadRecord?.data?.error ??
+        nestedMessage ??
         (response.status >= 500
           ? 'El servidor no está disponible temporalmente. Intenta en unos minutos.'
           : `Error del servidor (${response.status})`);

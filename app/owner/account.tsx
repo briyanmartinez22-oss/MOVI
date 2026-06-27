@@ -127,7 +127,13 @@ export default function OwnerAccount() {
         setUploadingKey(null);
         return;
       }
-      await uploadOwnerDocuments(id, { [key]: url });
+      const saveRes = await uploadOwnerDocuments(id, { [key]: url });
+      if (!saveRes.ok) {
+        const saveMessage = saveRes.error ?? 'No se pudo guardar el documento en tu perfil.';
+        setError(saveMessage);
+        Alert.alert('Error al guardar documento', saveMessage);
+        return;
+      }
       refresh();
       Alert.alert('Documento subido', 'El documento fue cargado correctamente.');
     } catch (e: unknown) {
@@ -140,12 +146,12 @@ export default function OwnerAccount() {
             : err?.message === 'Archivo requerido (campo: file)'
               ? 'La petición llegó al servidor, pero el archivo no viajó dentro del formulario.'
               : err?.message?.startsWith('UPLOAD_HTTP_')
-                ? 'El servidor rechazó la subida del documento.'
+                ? 'El servidor rechazó la subida del archivo.'
                 : err?.message === 'UPLOAD_NO_URL_RETURNED'
                   ? 'El servidor recibió el archivo, pero no devolvió la URL.'
                   : err?.message?.startsWith('UPLOAD_BAD_RESPONSE_')
                     ? 'El servidor devolvió una respuesta inválida al subir el archivo.'
-                    : `Falló la subida del documento: ${err?.message ?? 'error desconocido'}`;
+                    : `Falló la subida del archivo: ${err?.message ?? 'error desconocido'}`;
       setError(message);
       Alert.alert('Error al subir documento', message);
     } finally {

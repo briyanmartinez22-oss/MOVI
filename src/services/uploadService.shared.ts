@@ -73,12 +73,20 @@ export async function sendUploadRequest(
   }
 
   if (!res.ok) {
-    throw new Error(json?.error || `UPLOAD_HTTP_${res.status}`);
+    throw new Error(
+      json?.error || json?.message || json?.data?.error || `UPLOAD_HTTP_${res.status}`
+    );
   }
 
-  if (!json?.ok || !json?.data?.url) {
-    throw new Error(json?.error || 'UPLOAD_NO_URL_RETURNED');
+  const url =
+    json?.data?.url ??
+    json?.url ??
+    json?.data?.fileUrl ??
+    json?.fileUrl;
+
+  if (!url) {
+    throw new Error(json?.error || json?.message || 'UPLOAD_NO_URL_RETURNED');
   }
 
-  return json.data.url as string;
+  return url as string;
 }

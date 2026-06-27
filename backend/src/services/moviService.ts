@@ -657,12 +657,22 @@ export async function uploadOwnerDocuments(ownerId: string, docs: Record<string,
   const owner = await prisma.owner.findUnique({ where: { id: ownerId } });
   if (!owner) return { ok: false as const, error: 'Dueño no encontrado' };
 
-  const merged = { ...parseJsonField(owner.documentsJson, {}), ...docs };
+  const urlDocs = Object.fromEntries(
+    Object.entries(docs).filter(
+      ([, value]) => typeof value === 'string' && value.trim().length > 0
+    )
+  ) as Record<string, string>;
+
+  if (Object.keys(urlDocs).length === 0) {
+    return { ok: false as const, error: 'No se recibieron URLs de documentos válidas' };
+  }
+
+  const merged = { ...parseJsonField<Record<string, unknown>>(owner.documentsJson, {}), ...urlDocs };
   const updated = await prisma.owner.update({
     where: { id: ownerId },
     data: {
       documentsJson: stringifyJsonField(merged),
-      status: docs.selfie ? 'under_review' : 'documents_uploaded',
+      status: urlDocs.selfie ? 'under_review' : 'documents_uploaded',
     },
   });
 

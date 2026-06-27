@@ -223,9 +223,16 @@ export async function uploadOwnerDocuments(
 ): Promise<ApiResponse<Owner>> {
   if (useMockApi()) return mock.uploadOwnerDocuments(ownerId, docs);
   void ownerId;
-  const res = await apiPost<Owner>('/owners/upload-documents', docs);
-  if (res.ok && res.data) setProfileCache({ owner: res.data });
-  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al subir documentos');
+  const res = await apiPost<Record<string, unknown>>('/owners/upload-documents', docs);
+  if (res.ok && res.data) {
+    const owner = mapOwner(res.data, resolveCachedProfiles().user?.userId);
+    if (!owner) {
+      return fail('No se pudo normalizar el perfil del dueño después de guardar el documento.');
+    }
+    setProfileCache({ owner });
+    return ok(owner);
+  }
+  return fail(res.error ?? 'Error al subir documentos');
 }
 
 export async function submitOwnerVerification(

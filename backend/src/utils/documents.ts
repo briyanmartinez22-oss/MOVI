@@ -22,12 +22,16 @@ export function parseJsonBodyDocs(body: unknown): DocFields {
   return docs;
 }
 
-export async function parseMultipartOrJsonDocs(req: Request): Promise<DocFields> {
+export async function parseMultipartOrJsonDocs(
+  req: Request,
+  jsonBody?: unknown
+): Promise<DocFields> {
   const files = req.files as Express.Multer.File[] | undefined;
   const file = req.file as Express.Multer.File | undefined;
   const allFiles = files?.length ? files : file ? [file] : [];
 
-  const docs: DocFields = { ...parseJsonBodyDocs(req.body) };
+  const bodySource = jsonBody !== undefined ? jsonBody : req.body;
+  const docs: DocFields = { ...parseJsonBodyDocs(bodySource) };
 
   if (allFiles.length > 0) {
     const storage = await getStorageProvider();

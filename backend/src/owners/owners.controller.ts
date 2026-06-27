@@ -80,14 +80,49 @@ export class OwnersController {
   @Post('upload-documents')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(AnyFilesInterceptor())
-  async uploadDocuments(@AuthUser() auth: AuthPayload, @Req() req: Request) {
+  async uploadDocuments(
+    @AuthUser() auth: AuthPayload,
+    @Req() req: Request,
+    @Body() body: unknown
+  ) {
     const owner = await prisma.owner.findUnique({ where: { userId: auth.userId } });
     if (!owner) {
       throw new HttpException('Dueño no encontrado', HttpStatus.NOT_FOUND);
     }
 
-    const docs = await parseMultipartOrJsonDocs(req);
-    const result = await uploadOwnerDocuments(owner.id, docs);
+    let docs: Record<string, unknown>;
+    try {
+      docs = await parseMultipartOrJsonDocs(req, body);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Documentos inválidos';
+      throw new HttpException(message, HttpStatus.BAD_REQUEST);
+    }
+
+    const docUrls = Object.entries(docs).filter(
+      ([, value]) => typeof value === 'string' && value.trim().length > 0
+    );
+    const reqBodyKeys =
+      req.body && typeof req.body === 'object'
+        ? Object.keys(req.body as Record<string, unknown>)
+        : [];
+    const bodyKeys =
+      body && typeof body === 'object' ? Object.keys(body as Record<string, unknown>) : [];
+    console.log('[RAILWAY_OWNER_DOCS]', {
+      authUserId: auth.userId,
+      reqBodyKeys,
+      bodyKeys,
+      parsedDocKeys: Object.keys(docs),
+      docsEmpty: docUrls.length === 0,
+    });
+
+    if (docUrls.length === 0) {
+      throw new HttpException(
+        'No se recibieron URLs de documentos. Envía JSON como { "duiFront": "https://..." }.',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+
+    const result = await uploadOwnerDocuments(owner.id, Object.fromEntries(docUrls));
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Error al subir documentos', HttpStatus.BAD_REQUEST);
     }

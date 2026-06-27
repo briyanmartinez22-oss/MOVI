@@ -124,7 +124,11 @@ export default function RegisterOwnerScreen() {
     try {
       const url = await pickAndUploadDocument(key);
       if (!url) return;
-      await uploadOwnerDocuments(id, { [key]: url });
+      const saveRes = await uploadOwnerDocuments(id, { [key]: url });
+      if (!saveRes.ok) {
+        setError(saveRes.error ?? 'No se pudo guardar el documento en tu perfil.');
+        return;
+      }
       refresh();
     } catch (e: any) {
       const message =

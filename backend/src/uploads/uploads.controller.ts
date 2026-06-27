@@ -15,6 +15,41 @@ import type { AuthPayload } from '../common/guards/jwt-auth.guard';
 import { mapDocumentType, uploadAndStoreDocument } from '../services/documentStorage.service';
 import { getStorageProvider } from '../services/storageProvider';
 
+type UploadResponsePayload = {
+  url?: string;
+  fileUrl?: string;
+  storageKey?: string;
+  key?: string;
+  mimeType?: string;
+  size?: number;
+  provider?: string;
+  ownerId?: string | null;
+  createdAt?: string;
+};
+
+function normalizeUploadResponse(payload: UploadResponsePayload) {
+  const url = payload.url ?? payload.fileUrl;
+  if (!url) {
+    throw new HttpException(
+      'La subida se completó pero no se obtuvo URL del archivo',
+      HttpStatus.INTERNAL_SERVER_ERROR
+    );
+  }
+
+  return {
+    ok: true as const,
+    data: {
+      url,
+      storageKey: payload.storageKey ?? payload.key,
+      mimeType: payload.mimeType,
+      size: payload.size,
+      provider: payload.provider,
+      ownerId: payload.ownerId ?? undefined,
+      createdAt: payload.createdAt ?? new Date().toISOString(),
+    },
+  };
+}
+
 @Controller('uploads')
 export class UploadsController {
   @Post()
@@ -42,12 +77,12 @@ export class UploadsController {
           ownerId: body.ownerId,
         }
       );
-      return stored;
+      return normalizeUploadResponse(stored);
     }
 
     const storage = await getStorageProvider();
     const result = await storage.uploadFile(file.buffer, file.originalname, file.mimetype);
-    return {
+    return normalizeUploadResponse({
       url: result.url,
       storageKey: result.key,
       mimeType: result.mimeType,
@@ -55,6 +90,6 @@ export class UploadsController {
       provider: result.provider,
       ownerId: auth.userId,
       createdAt: new Date().toISOString(),
-    };
+    });
   }
 }
