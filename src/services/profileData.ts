@@ -217,6 +217,20 @@ async function runRefreshProfilesFromApi(): Promise<{ ok: boolean; error?: strin
       }
     }
     // TODO: no dedicated GET /owners/me profile endpoint exists; owner must come from /users/me/profiles.
+  } else if (owner) {
+    const cachedOwner = resolveCurrentProfiles().owner;
+    if (cachedOwner?.id === owner.id) {
+      owner = {
+        ...cachedOwner,
+        ...owner,
+        name: owner.name?.trim() ? owner.name : cachedOwner.name,
+        email: owner.email?.trim() ? owner.email : cachedOwner.email,
+        documents: {
+          ...(cachedOwner.documents ?? {}),
+          ...(owner.documents ?? {}),
+        },
+      };
+    }
   }
 
   const driverRaw = profiles.driver as (DriverProfileRecord & {

@@ -194,6 +194,40 @@ export async function uploadOwnerDocuments(
   return updated ? ok(updated) : fail('Dueño no encontrado');
 }
 
+export async function updateOwnerProfile(
+  firstName: string,
+  lastName: string,
+  email?: string
+): Promise<ApiResponse<{ owner: Owner; user: AuthUser }>> {
+  const userId = getStore().currentUserId;
+  if (!userId) return fail('Sesión no encontrada');
+
+  const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+  let updatedOwner: Owner | undefined;
+  let updatedUser: AuthUser | undefined;
+
+  updateStore((s) => {
+    const owners = s.owners.map((o) => {
+      if (o.userId !== userId) return o;
+      updatedOwner = {
+        ...o,
+        name: fullName,
+        email: email?.trim() || undefined,
+      };
+      return updatedOwner;
+    });
+    const users = s.users.map((u) => {
+      if (u.userId !== userId) return u;
+      updatedUser = { ...u, fullName };
+      return updatedUser;
+    });
+    return { ...s, owners, users };
+  });
+
+  if (!updatedOwner || !updatedUser) return fail('Dueño no encontrado');
+  return ok({ owner: updatedOwner, user: updatedUser });
+}
+
 export async function submitOwnerVerification(
   ownerId: string,
   specialCase?: SpecialCaseType,

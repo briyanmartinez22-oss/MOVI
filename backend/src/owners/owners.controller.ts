@@ -22,6 +22,7 @@ import {
   registerOwner,
   selfAssignOwnerAsDriver,
   submitOwnerVerification,
+  updateOwnerProfile,
   uploadOwnerDocuments,
 } from '../services/moviService';
 import {
@@ -127,6 +128,41 @@ export class OwnersController {
       throw new HttpException(result.error ?? 'Error al subir documentos', HttpStatus.BAD_REQUEST);
     }
     return result.owner;
+  }
+
+  @Post('me/profile')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(@AuthUser() auth: AuthPayload, @Body() body: unknown) {
+    const parsed = z
+      .object({
+        firstName: z.string().min(1),
+        lastName: z.string().optional().default(''),
+        email: z.string().email().optional().or(z.literal('')),
+      })
+      .safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException('Datos de perfil inválidos', HttpStatus.BAD_REQUEST);
+    }
+
+    console.log('[OWNER_EDIT_DEBUG]', {
+      authUserId: auth.userId,
+      payload: {
+        firstName: parsed.data.firstName,
+        lastName: parsed.data.lastName,
+        email: parsed.data.email || null,
+      },
+    });
+
+    const result = await updateOwnerProfile(auth.userId, {
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      email: parsed.data.email || undefined,
+    });
+    if (!result.ok) {
+      throw new HttpException(result.error ?? 'Error al actualizar perfil', HttpStatus.BAD_REQUEST);
+    }
+
+    return { owner: result.owner, user: result.user };
   }
 
   @Post('submit-verification')

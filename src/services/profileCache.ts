@@ -6,9 +6,23 @@ import {
   DriverSubscription,
   InviteCode,
   Owner,
+  OwnerDocuments,
   TripHistoryRecord,
   Vehicle,
 } from '../types/models';
+
+function mergeOwnerDocuments(
+  base?: OwnerDocuments | null,
+  incoming?: OwnerDocuments | null
+): OwnerDocuments {
+  const merged: OwnerDocuments = { ...(base ?? {}) };
+  for (const [key, value] of Object.entries(incoming ?? {})) {
+    if (typeof value === 'string' && value.trim()) {
+      merged[key as keyof OwnerDocuments] = value;
+    }
+  }
+  return merged;
+}
 
 let cachedUser: AuthUser | null = null;
 let cachedOwner: Owner | null = null;
@@ -37,7 +51,17 @@ export function setProfileCache(data: {
   driverSessions?: DriverSession[];
 }): void {
   if (data.user !== undefined) cachedUser = data.user;
-  if (data.owner !== undefined) cachedOwner = data.owner;
+  if (data.owner !== undefined) {
+    if (data.owner && cachedOwner && cachedOwner.id === data.owner.id) {
+      cachedOwner = {
+        ...cachedOwner,
+        ...data.owner,
+        documents: mergeOwnerDocuments(cachedOwner.documents, data.owner.documents),
+      };
+    } else {
+      cachedOwner = data.owner;
+    }
+  }
   if (data.driver !== undefined) cachedDriver = data.driver;
   if (data.business !== undefined) cachedBusiness = data.business;
   if (data.vehicles !== undefined) cachedVehicles = data.vehicles;

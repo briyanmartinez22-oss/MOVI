@@ -211,6 +211,8 @@ export interface Owner {
   name: string;
   phone: string;
   dui: string;
+  email?: string;
+  documentType?: 'DUI' | 'LICENSE';
   status: OwnerVerificationStatus;
   documents: OwnerDocuments;
   specialCase?: SpecialCaseType;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,10 @@ import { PrimaryButton } from '../../src/components';
 import { useAuth } from '../../src/context/AuthContext';
 import { useProfileBootstrap } from '../../src/hooks/useProfileBootstrap';
 import { getOwnerByUserId } from '../../src/services/profileData';
-import { uploadOwnerDocuments, submitOwnerVerification } from '../../src/services/api';
+import { resolveCurrentProfiles } from '../../src/services/profileCache';
+import { uploadOwnerDocuments, submitOwnerVerification, updateOwnerProfile } from '../../src/services/api';
 import { pickAndUploadDocument } from '../../src/services/uploadService';
+import { showError, showSuccess } from '../../src/utils/feedback';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 const DOC_FIELDS_BY_TYPE = {
@@ -39,7 +41,6 @@ export default function OwnerAccount() {
   const { user, logout, refresh, profileRevision } = useAuth();
   const { loading, error: bootstrapError, reload } = useProfileBootstrap('owner');
   const owner = user ? getOwnerByUserId(user.userId) : null;
-  void profileRevision;
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -47,8 +48,14 @@ export default function OwnerAccount() {
   const [editing, setEditing] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<DocKey | null>(null);
   const [submittingVerification, setSubmittingVerification] = useState(false);
+  const [localDocUrls, setLocalDocUrls] = useState<Partial<Record<DocKey, string>>>({});
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
   const [error, setError] = useState('');
   const profileSyncing = Boolean(user?.role === 'owner' && !owner?.id);
+  const resolvedOwnerId = owner?.id ?? resolveCurrentProfiles().owner?.id ?? null;
+  const saveProfileDisabled = savingProfile || !resolvedOwnerId;
 
   useEffect(() => {
     if (owner?.name) {
@@ -56,8 +63,167 @@ export default function OwnerAccount() {
       setFirstName(parts[0] ?? '');
       setLastName(parts.slice(1).join(' ') ?? '');
     }
-    setEmail((owner as { email?: string } | null)?.email ?? '');
-  }, [owner?.name, (owner as { email?: string } | null)?.email]);
+    setEmail((owner as { email?: string } | null)?.email ?? owner?.email ?? '');
+  }, [owner?.name, owner?.email, (owner as { email?: string } | null)?.email]);
+
+  const resetProfileForm = () => {
+    if (owner?.name) {
+      const parts = owner.name.trim().split(' ');
+      setFirstName(parts[0] ?? '');
+      setLastName(parts.slice(1).join(' ') ?? '');
+    } else {
+      setFirstName('');
+      setLastName('');
+    }
+    setEmail(owner?.email ?? (owner as { email?: string } | null)?.email ?? '');
+  };
+
+  useEffect(() => {
+    if (!owner?.documents) return;
+    setLocalDocUrls((prev) => ({ ...owner.documents, ...prev }));
+  }, [owner?.documents, profileRevision]);
+
+  const documentType: 'DUI' | 'LICENSE' =
+    (owner as { documentType?: string } | null)?.documentType === 'LICENSE' ? 'LICENSE' : 'DUI';
+
+  const docs = DOC_FIELDS_BY_TYPE[documentType];
+
+  const docValues = useMemo<Record<DocKey, string | undefined>>(() => {
+    const storedDocs = {
+      ...(owner?.documents ?? {}),
+      ...localDocUrls,
+    };
+    return {
+      duiFront: storedDocs.duiFront,
+      duiBack: storedDocs.duiBack,
+      licenseFront: storedDocs.licenseFront,
+      licenseBack: storedDocs.licenseBack,
+    };
+  }, [owner?.documents, localDocUrls, profileRevision]);
+
+  const allDocsUploaded = docs.every((d) => Boolean(docValues[d.key]));
+  const canSubmitVerification =
+    Boolean(owner?.id) && allDocsUploaded && !submittingVerification && owner?.status !== 'approved';
+
+  useEffect(() => {
+    console.log('[OWNER_DOC_UI_DEBUG]', {
+      ownerId: owner?.id ?? null,
+      profileRevision,
+      documents: docValues,
+      allDocsUploaded,
+      canSubmitVerification,
+      profileSyncing,
+      uploadingKey,
+      submittingVerification,
+    });
+  }, [
+    owner?.id,
+    profileRevision,
+    docValues,
+    allDocsUploaded,
+    canSubmitVerification,
+    profileSyncing,
+    uploadingKey,
+    submittingVerification,
+  ]);
+
+  const toggleEditing = () => {
+    if (editing) {
+      resetProfileForm();
+      setProfileError('');
+      setProfileSuccess('');
+    } else {
+      setProfileError('');
+      setProfileSuccess('');
+    }
+    setEditing((prev) => !prev);
+  };
+
+  const handleSaveProfile = async (ownerId: string) => {
+    const payload = {
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim() || undefined,
+    };
+
+    if (!payload.firstName) {
+      const message = 'El nombre es obligatorio.';
+      setProfileError(message);
+      setProfileSuccess('');
+      showError('Datos incompletos', message);
+      return;
+    }
+
+    setProfileError('');
+    setProfileSuccess('');
+    setSavingProfile(true);
+    console.log('[OWNER_EDIT_DEBUG]', { action: 'save_start', ownerId, payload });
+    console.log('[OWNER_SAVE_CLICK_DEBUG]', { action: 'api_request_start', ownerId, payload });
+
+    try {
+      const res = await updateOwnerProfile({
+        ...payload,
+        lastName: payload.lastName || '',
+      });
+      console.log('[OWNER_EDIT_DEBUG]', {
+        action: 'save_result',
+        ok: res.ok,
+        error: res.error ?? null,
+        mappedOwner: res.data?.owner
+          ? { id: res.data.owner.id, name: res.data.owner.name, email: res.data.owner.email ?? null }
+          : null,
+      });
+
+      if (!res.ok) {
+        const message = res.error ?? 'No se pudo guardar el perfil.';
+        setProfileError(message);
+        showError('Error al guardar perfil', message);
+        return;
+      }
+
+      refresh();
+      setEditing(false);
+      setProfileSuccess('Perfil actualizado correctamente.');
+      showSuccess('Perfil actualizado', 'Tus cambios se guardaron correctamente.');
+    } catch (saveError: unknown) {
+      const message =
+        saveError instanceof Error ? saveError.message : 'No se pudo guardar el perfil.';
+      setProfileError(message);
+      showError('Error al guardar perfil', message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSavePress = () => {
+    console.log('[OWNER_SAVE_CLICK_DEBUG]', {
+      pressed: true,
+      saveDisabled: saveProfileDisabled,
+      editing,
+      savingProfile,
+      profileSyncing,
+      ownerId: resolvedOwnerId,
+      payload: {
+        firstName,
+        lastName,
+        email,
+      },
+    });
+
+    if (saveProfileDisabled) {
+      const message = !resolvedOwnerId
+        ? 'Tu perfil de dueño aún se está sincronizando. Intenta de nuevo en unos segundos.'
+        : 'Guardado en progreso…';
+      setProfileError(message);
+      setProfileSuccess('');
+      if (!resolvedOwnerId) {
+        showError('Perfil no listo', message);
+      }
+      return;
+    }
+
+    void handleSaveProfile(resolvedOwnerId);
+  };
 
   if (loading) return <BrandedLoadingView message="Cargando…" />;
 
@@ -82,38 +248,10 @@ export default function OwnerAccount() {
     : owner?.status === 'pending' ? 'Pendiente'
     : owner?.status ?? 'Desconocido';
 
-  const documentType: 'DUI' | 'LICENSE' =
-    (owner as { documentType?: string } | null)?.documentType === 'LICENSE' ? 'LICENSE' : 'DUI';
-
-  const docs = DOC_FIELDS_BY_TYPE[documentType];
-
-  const storedDocs = {
-    ...(owner?.documents ?? {}),
-    ...((owner as Record<string, string | undefined> | null) ?? {}),
-  };
-
-  const docValues: Record<DocKey, string | undefined> = {
-    duiFront: storedDocs.duiFront,
-    duiBack: storedDocs.duiBack,
-    licenseFront: storedDocs.licenseFront,
-    licenseBack: storedDocs.licenseBack,
-  };
-
-  const allDocsUploaded = docs.every((d) => Boolean(docValues[d.key]));
   const phoneValue = owner?.phone ?? (user as { phone?: string } | null)?.phone ?? user?.phoneNumber ?? '—';
 
-  const handleSaveProfile = async () => {
-    setError('');
-    Alert.alert(
-      'Guardar perfil',
-      'Por ahora este cambio guardará solo en la UI. Si quieres, después conectamos el endpoint real para actualizar nombre y correo.',
-      [{ text: 'Entendido' }]
-    );
-    setEditing(false);
-  };
-
   const uploadDoc = async (key: DocKey) => {
-    const id = owner?.id;
+    const id = resolvedOwnerId;
     if (!id) {
       setError('Tu perfil de dueño aún se está sincronizando. Intenta de nuevo en unos segundos.');
       return;
@@ -134,6 +272,11 @@ export default function OwnerAccount() {
         Alert.alert('Error al guardar documento', saveMessage);
         return;
       }
+      setLocalDocUrls((prev) => ({
+        ...prev,
+        ...(saveRes.data?.documents ?? {}),
+        [key]: url,
+      }));
       refresh();
       Alert.alert('Documento subido', 'El documento fue cargado correctamente.');
     } catch (e: unknown) {
@@ -211,7 +354,7 @@ export default function OwnerAccount() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Perfil</Text>
-          <TouchableOpacity onPress={() => setEditing((prev) => !prev)}>
+          <TouchableOpacity onPress={toggleEditing}>
             <Text style={styles.linkText}>{editing ? 'Cancelar' : 'Editar'}</Text>
           </TouchableOpacity>
         </View>
@@ -222,13 +365,27 @@ export default function OwnerAccount() {
               <FormInput label="Nombres" value={firstName} onChangeText={setFirstName} placeholder="Nombre" />
               <FormInput label="Apellidos" value={lastName} onChangeText={setLastName} placeholder="Apellido" />
               <FormInput label="Correo" value={email} onChangeText={setEmail} placeholder="correo@ejemplo.com" />
-              <PrimaryButton title="Guardar cambios" onPress={handleSaveProfile} style={{ marginTop: spacing.md }} />
+              {!resolvedOwnerId ? (
+                <Text style={styles.profileHint}>
+                  Tu perfil de dueño aún se está sincronizando. Guardar estará disponible en unos segundos.
+                </Text>
+              ) : null}
+              {profileError ? <Text style={styles.error}>{profileError}</Text> : null}
+              {profileSuccess ? <Text style={styles.success}>{profileSuccess}</Text> : null}
+              <PrimaryButton
+                title={savingProfile ? 'Guardando…' : 'Guardar cambios'}
+                onPress={handleSavePress}
+                loading={savingProfile}
+                disabled={saveProfileDisabled}
+                style={{ marginTop: spacing.md }}
+              />
             </>
           ) : (
             <>
+              {profileSuccess ? <Text style={styles.success}>{profileSuccess}</Text> : null}
               <InfoRow label="Nombre" value={owner?.name ?? '—'} />
               <InfoRow label="Teléfono" value={phoneValue} />
-              <InfoRow label="Correo" value={(owner as { email?: string } | null)?.email ?? 'No registrado'} />
+              <InfoRow label="Correo" value={owner?.email ?? 'No registrado'} />
               <InfoRow label="DUI" value={owner?.dui ?? '—'} />
               <InfoRow label="Tipo de documento" value={documentType === 'DUI' ? 'DUI' : 'Licencia'} />
             </>
@@ -244,12 +401,16 @@ export default function OwnerAccount() {
           {docs.map((doc) => {
             const uploaded = Boolean(docValues[doc.key]);
             const uploading = uploadingKey === doc.key;
-            const docsDisabled = !owner?.id || uploading;
+            const docsDisabled = profileSyncing || uploading;
 
             return (
               <TouchableOpacity
                 key={doc.key}
-                style={[styles.docBtn, uploaded && styles.docBtnDone, docsDisabled && styles.docBtnDisabled]}
+                style={[
+                  styles.docBtn,
+                  uploaded ? styles.docBtnDone : styles.docBtnPending,
+                  uploading && styles.docBtnUploading,
+                ]}
                 onPress={() => uploadDoc(doc.key)}
                 disabled={docsDisabled}
                 activeOpacity={0.75}
@@ -261,12 +422,12 @@ export default function OwnerAccount() {
                     <Ionicons
                       name={uploaded ? 'checkmark-circle' : 'cloud-upload-outline'}
                       size={22}
-                      color={uploaded ? colors.online : colors.textMuted}
+                      color={uploaded ? colors.online : colors.textSecondary}
                     />
                   )}
                   <View style={styles.docTexts}>
-                    <Text style={styles.docLabel}>{doc.label}</Text>
-                    <Text style={styles.docStatus}>
+                    <Text style={[styles.docLabel, uploaded && styles.docLabelDone]}>{doc.label}</Text>
+                    <Text style={[styles.docStatus, uploaded && styles.docStatusDone]}>
                       {uploading
                         ? 'Subiendo…'
                         : uploaded
@@ -275,7 +436,11 @@ export default function OwnerAccount() {
                     </Text>
                   </View>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                <Ionicons
+                  name={uploaded ? 'document-text-outline' : 'chevron-forward'}
+                  size={18}
+                  color={uploaded ? colors.online : colors.textMuted}
+                />
               </TouchableOpacity>
             );
           })}
@@ -294,7 +459,7 @@ export default function OwnerAccount() {
                 title={submittingVerification ? 'Enviando…' : 'Enviar verificación'}
                 onPress={handleSubmitVerification}
                 loading={submittingVerification}
-                disabled={!owner?.id || !allDocsUploaded || submittingVerification}
+                disabled={!canSubmitVerification}
                 style={{ marginTop: spacing.md }}
               />
               {!allDocsUploaded ? (
@@ -361,18 +526,28 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { ...typography.subtitle, color: colors.text },
   linkText: { ...typography.body, color: colors.brandRed },
+  profileHint: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },
   docHint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md },
   docBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.borderLight,
     padding: spacing.md,
     borderRadius: radius.lg,
     marginBottom: spacing.sm,
+    borderWidth: 1,
   },
-  docBtnDone: { borderWidth: 1, borderColor: colors.online },
-  docBtnDisabled: { opacity: 0.55 },
+  docBtnPending: {
+    backgroundColor: colors.borderLight,
+    borderColor: colors.borderLight,
+  },
+  docBtnDone: {
+    backgroundColor: colors.surface,
+    borderColor: colors.online,
+  },
+  docBtnUploading: {
+    opacity: 0.85,
+  },
   docLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
   syncHint: {
     ...typography.caption,
@@ -383,8 +558,11 @@ const styles = StyleSheet.create({
   },
   docTexts: { flex: 1, gap: 2 },
   docLabel: { ...typography.body, color: colors.text },
+  docLabelDone: { color: colors.text },
   docStatus: { ...typography.caption, color: colors.textSecondary },
+  docStatusDone: { color: colors.online },
   error: { ...typography.caption, color: colors.danger, marginTop: spacing.sm },
+  success: { ...typography.caption, color: colors.online, marginTop: spacing.sm },
   verifyHint: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },
   menuItem: {
     flexDirection: 'row',

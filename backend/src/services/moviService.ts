@@ -686,6 +686,38 @@ export async function uploadOwnerDocuments(ownerId: string, docs: Record<string,
   };
 }
 
+export async function updateOwnerProfile(
+  userId: string,
+  data: { firstName: string; lastName: string; email?: string }
+) {
+  const owner = await prisma.owner.findUnique({ where: { userId } });
+  if (!owner) return { ok: false as const, error: 'Dueño no encontrado' };
+
+  const firstName = data.firstName.trim();
+  const lastName = data.lastName.trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  const email = data.email?.trim() || null;
+
+  const updatedOwner = await prisma.owner.update({
+    where: { id: owner.id },
+    data: { firstName, lastName, name: fullName, email },
+  });
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { fullName, email },
+  });
+
+  return {
+    ok: true as const,
+    owner: {
+      ...updatedOwner,
+      documents: parseJsonField(updatedOwner.documentsJson, {}),
+      createdAt: updatedOwner.createdAt.toISOString(),
+    },
+    user: toAuthUser(updatedUser),
+  };
+}
+
 export async function submitOwnerVerification(
   ownerId: string,
   specialCase?: string,

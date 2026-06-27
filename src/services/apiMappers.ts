@@ -73,6 +73,11 @@ export function mapOwner(
     name: String(raw.name ?? ''),
     phone: String(raw.phone ?? ''),
     dui: String(raw.dui ?? ''),
+    email: raw.email ? String(raw.email) : undefined,
+    documentType:
+      raw.documentType === 'LICENSE' || raw.documentType === 'DUI'
+        ? raw.documentType
+        : undefined,
     status: raw.status as Owner['status'],
     documents: parseOwnerDocuments(raw.documents ?? raw.documentsJson),
     specialCase: raw.specialCase as Owner['specialCase'],

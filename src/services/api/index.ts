@@ -235,6 +235,81 @@ export async function uploadOwnerDocuments(
   return fail(res.error ?? 'Error al subir documentos');
 }
 
+export async function updateOwnerProfile(payload: {
+  firstName: string;
+  lastName?: string;
+  email?: string;
+}): Promise<ApiResponse<{ owner: Owner; user: AuthUser }>> {
+  const endpoint = '/owners/me/profile';
+  const method = 'POST';
+  console.log('[OWNER_EDIT_DEBUG]', {
+    action: 'request',
+    method,
+    endpoint,
+    payload,
+    cacheBefore: {
+      ownerName: resolveCachedProfiles().owner?.name ?? null,
+      ownerEmail: resolveCachedProfiles().owner?.email ?? null,
+      userFullName: resolveCachedProfiles().user?.fullName ?? null,
+    },
+  });
+
+  if (useMockApi()) {
+    const res = await mock.updateOwnerProfile(payload.firstName, payload.lastName, payload.email);
+    console.log('[OWNER_EDIT_DEBUG]', {
+      action: 'response',
+      endpoint,
+      ok: res.ok,
+      error: res.error ?? null,
+      mappedOwner: res.data?.owner ?? null,
+    });
+    if (res.ok && res.data) {
+      setProfileCache({ owner: res.data.owner, user: res.data.user });
+    }
+    return res;
+  }
+
+  const res = await apiPost<{ owner: Record<string, unknown>; user: AuthUser }>(
+    endpoint,
+    payload
+  );
+  console.log('[OWNER_EDIT_DEBUG]', {
+    action: 'response',
+    endpoint,
+    ok: res.ok,
+    error: res.error ?? null,
+    responseShape: res.data
+      ? {
+          ownerKeys: Object.keys(res.data.owner ?? {}),
+          userKeys: Object.keys(res.data.user ?? {}),
+        }
+      : null,
+  });
+
+  if (res.ok && res.data) {
+    const owner = mapOwner(
+      res.data.owner,
+      res.data.user?.userId ?? resolveCachedProfiles().user?.userId
+    );
+    if (!owner) {
+      return fail('No se pudo normalizar el perfil del dueño después de guardar.');
+    }
+    setProfileCache({ owner, user: res.data.user });
+    console.log('[OWNER_EDIT_DEBUG]', {
+      action: 'cache_updated',
+      mappedOwner: { id: owner.id, name: owner.name, email: owner.email ?? null },
+      cacheAfter: {
+        ownerName: owner.name,
+        ownerEmail: owner.email ?? null,
+        userFullName: res.data.user.fullName,
+      },
+    });
+    return ok({ owner, user: res.data.user });
+  }
+
+  return fail(res.error ?? 'Error al actualizar perfil');
+}
+
 export async function submitOwnerVerification(
   ownerId: string,
   specialCase?: SpecialCaseType,
