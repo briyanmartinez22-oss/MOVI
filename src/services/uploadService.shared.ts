@@ -82,9 +82,28 @@ export async function sendUploadRequest(
     json?.data?.url ??
     json?.url ??
     json?.data?.fileUrl ??
-    json?.fileUrl;
+    json?.fileUrl ??
+    json?.data?.data?.url ??
+    json?.data?.data?.fileUrl;
 
   if (!url) {
+    const shapeHint = json
+      ? {
+          topLevelKeys: Object.keys(json as object),
+          dataKeys:
+            json?.data && typeof json.data === 'object'
+              ? Object.keys(json.data as object)
+              : null,
+          nestedDataKeys:
+            json?.data?.data && typeof json.data.data === 'object'
+              ? Object.keys(json.data.data as object)
+              : null,
+        }
+      : null;
+    console.log('[UPLOAD_RESPONSE_DEBUG]', {
+      status: res.status,
+      shapeHint,
+    });
     throw new Error(json?.error || json?.message || 'UPLOAD_NO_URL_RETURNED');
   }
 

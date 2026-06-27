@@ -39,17 +39,15 @@ function normalizeUploadResponse(payload: UploadResponsePayload) {
     );
   }
 
+  // Return the inner payload only; ApiResponseInterceptor wraps as { ok: true, data }.
   return {
-    ok: true as const,
-    data: {
-      url,
-      storageKey: payload.storageKey ?? payload.key,
-      mimeType: payload.mimeType,
-      size: payload.size,
-      provider: payload.provider,
-      ownerId: payload.ownerId ?? undefined,
-      createdAt: payload.createdAt ?? new Date().toISOString(),
-    },
+    url,
+    storageKey: payload.storageKey ?? payload.key,
+    mimeType: payload.mimeType,
+    size: payload.size,
+    provider: payload.provider,
+    ownerId: payload.ownerId ?? undefined,
+    createdAt: payload.createdAt ?? new Date().toISOString(),
   };
 }
 
