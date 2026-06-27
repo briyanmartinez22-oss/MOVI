@@ -182,10 +182,9 @@ export async function uploadOwnerDocuments(
   updateStore((s) => {
     const owners = s.owners.map((o) => {
       if (o.id !== ownerId) return o;
-      updated = {
+        updated = {
         ...o,
         documents: { ...o.documents, ...docs },
-        status: docs.selfie ? 'under_review' : 'documents_uploaded',
       };
       return updated;
     });
@@ -197,7 +196,9 @@ export async function uploadOwnerDocuments(
 export async function updateOwnerProfile(
   firstName: string,
   lastName: string,
-  email?: string
+  email?: string,
+  documentType?: 'DUI' | 'LICENSE',
+  dui?: string
 ): Promise<ApiResponse<{ owner: Owner; user: AuthUser }>> {
   const userId = getStore().currentUserId;
   if (!userId) return fail('Sesión no encontrada');
@@ -213,6 +214,8 @@ export async function updateOwnerProfile(
         ...o,
         name: fullName,
         email: email?.trim() || undefined,
+        documentType,
+        dui: dui?.trim() || o.dui,
       };
       return updatedOwner;
     });
@@ -233,6 +236,20 @@ export async function submitOwnerVerification(
   specialCase?: SpecialCaseType,
   ownershipProofImage?: string
 ): Promise<ApiResponse<Owner>> {
+  const store = getStore();
+  const owner = store.owners.find((o) => o.id === ownerId);
+  const user = store.users.find((u) => u.userId === owner?.userId);
+  if (!owner) return fail('Dueño no encontrado');
+  if (owner.status === 'under_review') return fail('Tu verificación ya fue enviada.');
+  if (!user?.profilePhoto) return fail('Falta la foto de perfil.');
+
+  const docType = owner.documentType === 'LICENSE' ? 'LICENSE' : 'DUI';
+  const frontKey = docType === 'LICENSE' ? 'licenseFront' : 'duiFront';
+  const backKey = docType === 'LICENSE' ? 'licenseBack' : 'duiBack';
+  if (!owner.documents[frontKey as keyof OwnerDocuments] || !owner.documents[backKey as keyof OwnerDocuments]) {
+    return fail('Faltan documentos obligatorios.');
+  }
+
   let updated: Owner | undefined;
   updateStore((s) => {
     const owners = s.owners.map((o) => {

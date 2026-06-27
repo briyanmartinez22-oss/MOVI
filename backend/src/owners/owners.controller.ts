@@ -138,6 +138,8 @@ export class OwnersController {
         firstName: z.string().min(1),
         lastName: z.string().optional().default(''),
         email: z.string().email().optional().or(z.literal('')),
+        documentType: z.enum(['DUI', 'LICENSE']).optional(),
+        dui: z.string().min(5).optional(),
       })
       .safeParse(body ?? {});
     if (!parsed.success) {
@@ -157,6 +159,8 @@ export class OwnersController {
       firstName: parsed.data.firstName,
       lastName: parsed.data.lastName,
       email: parsed.data.email || undefined,
+      documentType: parsed.data.documentType,
+      dui: parsed.data.dui,
     });
     if (!result.ok) {
       throw new HttpException(result.error ?? 'Error al actualizar perfil', HttpStatus.BAD_REQUEST);

@@ -37,10 +37,14 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 type VerificationOwner = {
   id: string;
   name: string;
+  phone?: string;
   dui: string;
   mvpStatus: MvpVerificationStatus;
   duiFront?: string;
   duiBack?: string;
+  licenseFront?: string;
+  licenseBack?: string;
+  profilePhoto?: string;
   nitUrl?: string;
 };
 
@@ -433,10 +437,20 @@ export default function AdminVerifications() {
     id: o.id,
     name: o.name,
     mvpStatus: o.mvpStatus,
-    meta: [{ label: 'DUI', value: o.dui }],
+    meta: [
+      { label: 'DUI', value: o.dui },
+      { label: 'Teléfono', value: (o as { phone?: string }).phone ?? '—' },
+    ],
     docs: [
       o.duiFront ? { label: 'DUI frontal', url: o.duiFront } : null,
       o.duiBack ? { label: 'DUI trasero', url: o.duiBack } : null,
+      (o as { licenseFront?: string }).licenseFront
+        ? { label: 'Licencia frontal', url: (o as { licenseFront?: string }).licenseFront! }
+        : null,
+      (o as { licenseBack?: string }).licenseBack
+        ? { label: 'Licencia trasera', url: (o as { licenseBack?: string }).licenseBack! }
+        : null,
+      o.profilePhoto ? { label: 'Foto de perfil', url: o.profilePhoto } : null,
       o.nitUrl ? { label: 'NIT', url: o.nitUrl } : null,
     ].filter(Boolean) as { label: string; url: string }[],
   });

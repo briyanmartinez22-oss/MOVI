@@ -111,35 +111,51 @@ export async function getAdminKpis() {
 export async function listPendingVerifications() {
   const [owners, vehicles, drivers] = await Promise.all([
     prisma.owner.findMany({
-      where: { status: { not: 'approved' } },
+      where: { status: 'under_review', deletedAt: null },
+      include: { user: { select: { profilePhoto: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     }),
     prisma.vehicle.findMany({
-      where: { status: { not: 'approved' } },
+      where: { status: 'under_review', deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 100,
     }),
     prisma.driver.findMany({
-      where: { status: { not: 'approved' } },
-      include: { vehicle: true },
+      where: { status: 'pending', deletedAt: null },
+      include: { vehicle: true, user: { select: { profilePhoto: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     }),
   ]);
 
+  console.log('[OWNER_ADMIN_QUEUE_DEBUG]', {
+    ownersUnderReview: owners.length,
+    vehiclesUnderReview: vehicles.length,
+    driversPending: drivers.length,
+  });
+
   return {
-    owners: owners.map((o) => ({
-      id: o.id,
-      userId: o.userId,
-      name: o.name,
-      phone: o.phone,
-      dui: o.dui,
-      status: o.status,
-      mvpStatus: mapOwnerMvpStatus(o.status),
-      documents: parseJsonField(o.documentsJson, {}),
-      createdAt: o.createdAt.toISOString(),
-    })),
+    owners: owners.map((o) => {
+      const documents = parseJsonField<Record<string, string>>(o.documentsJson, {});
+      return {
+        id: o.id,
+        userId: o.userId,
+        name: o.name,
+        phone: o.phone,
+        dui: o.dui,
+        documentType: o.documentType,
+        status: o.status,
+        mvpStatus: mapOwnerMvpStatus(o.status),
+        documents,
+        duiFront: documents.duiFront,
+        duiBack: documents.duiBack,
+        licenseFront: documents.licenseFront,
+        licenseBack: documents.licenseBack,
+        profilePhoto: o.user.profilePhoto ?? documents.selfie,
+        createdAt: o.createdAt.toISOString(),
+      };
+    }),
     vehicles: vehicles.map((v) => ({
       vehicleId: v.id,
       unitNumber: v.unitNumber,

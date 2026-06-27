@@ -80,9 +80,7 @@ export default function RegisterOwnerScreen() {
       );
       if (res.ok) {
         refresh();
-        const cachedOwner = resolveCurrentProfiles().owner;
-        if (cachedOwner) setOwnerId(cachedOwner.id);
-        setStep('docs');
+        router.replace('/owner/account');
       } else setError(res.error ?? 'Error');
     });
   };

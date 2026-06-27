@@ -1,9 +1,12 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthShell } from '../../src/components/AuthShell';
+import { useOwnerVerificationRedirect } from '../../src/hooks/useOwnerVerificationRedirect';
 import { colors } from '../../src/theme';
 
 export default function OwnerLayout() {
+  useOwnerVerificationRedirect();
+
   return (
     <AuthShell>
       <Tabs

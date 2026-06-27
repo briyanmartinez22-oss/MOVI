@@ -672,7 +672,6 @@ export async function uploadOwnerDocuments(ownerId: string, docs: Record<string,
     where: { id: ownerId },
     data: {
       documentsJson: stringifyJsonField(merged),
-      status: urlDocs.selfie ? 'under_review' : 'documents_uploaded',
     },
   });
 
@@ -688,7 +687,13 @@ export async function uploadOwnerDocuments(ownerId: string, docs: Record<string,
 
 export async function updateOwnerProfile(
   userId: string,
-  data: { firstName: string; lastName: string; email?: string }
+  data: {
+    firstName: string;
+    lastName: string;
+    email?: string;
+    documentType?: 'DUI' | 'LICENSE';
+    dui?: string;
+  }
 ) {
   const owner = await prisma.owner.findUnique({ where: { userId } });
   if (!owner) return { ok: false as const, error: 'Dueño no encontrado' };
@@ -697,14 +702,33 @@ export async function updateOwnerProfile(
   const lastName = data.lastName.trim();
   const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
   const email = data.email?.trim() || null;
+  const ownerUpdate: {
+    firstName: string;
+    lastName: string;
+    name: string;
+    email: string | null;
+    documentType?: 'DUI' | 'LICENSE';
+    dui?: string;
+  } = { firstName, lastName, name: fullName, email };
+
+  if (data.documentType === 'DUI' || data.documentType === 'LICENSE') {
+    ownerUpdate.documentType = data.documentType;
+  }
+  if (data.dui?.trim()) {
+    ownerUpdate.dui = normalizeDui(data.dui);
+  }
 
   const updatedOwner = await prisma.owner.update({
     where: { id: owner.id },
-    data: { firstName, lastName, name: fullName, email },
+    data: ownerUpdate,
   });
   const updatedUser = await prisma.user.update({
     where: { id: userId },
-    data: { fullName, email },
+    data: {
+      fullName,
+      email,
+      ...(data.dui?.trim() ? { duiNumber: normalizeDui(data.dui) } : {}),
+    },
   });
 
   return {
@@ -723,6 +747,52 @@ export async function submitOwnerVerification(
   specialCase?: string,
   ownershipProofImage?: string
 ) {
+  const owner = await prisma.owner.findUnique({
+    where: { id: ownerId },
+    include: { user: true },
+  });
+  if (!owner) return { ok: false as const, error: 'Dueño no encontrado' };
+
+  if (owner.status === 'under_review') {
+    return { ok: false as const, error: 'Tu verificación ya fue enviada y está en revisión.' };
+  }
+  if (owner.status === 'approved') {
+    return { ok: false as const, error: 'Tu cuenta ya está aprobada.' };
+  }
+  if (owner.status === 'suspended') {
+    return { ok: false as const, error: 'Tu cuenta está suspendida.' };
+  }
+
+  const documents = parseJsonField<Record<string, string>>(owner.documentsJson, {});
+  const frontKey = owner.documentType === 'LICENSE' ? 'licenseFront' : 'duiFront';
+  const backKey = owner.documentType === 'LICENSE' ? 'licenseBack' : 'duiBack';
+  const missing: string[] = [];
+
+  if (!owner.firstName?.trim() && !owner.name?.trim()) missing.push('nombres');
+  if (!owner.dui?.trim()) missing.push('número de documento');
+  if (!owner.phone?.trim()) missing.push('teléfono');
+  if (!owner.user.profilePhoto?.trim()) missing.push('foto de perfil');
+  if (!documents[frontKey]?.trim()) {
+    missing.push(owner.documentType === 'LICENSE' ? 'licencia frontal' : 'DUI frontal');
+  }
+  if (!documents[backKey]?.trim()) {
+    missing.push(owner.documentType === 'LICENSE' ? 'licencia trasera' : 'DUI trasera');
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false as const,
+      error: `Completa tu verificación antes de enviar: ${missing.join(', ')}.`,
+    };
+  }
+
+  console.log('[OWNER_VERIFICATION_DEBUG]', {
+    ownerId,
+    previousStatus: owner.status,
+    nextStatus: 'under_review',
+    documentType: owner.documentType,
+  });
+
   const updated = await prisma.owner.update({
     where: { id: ownerId },
     data: { status: 'under_review', specialCase, ownershipProofImage },
@@ -733,7 +803,7 @@ export async function submitOwnerVerification(
     ok: true as const,
     owner: {
       ...updated,
-      documents: parseJsonField(updated.documentsJson, {}),
+      documents,
       createdAt: updated.createdAt.toISOString(),
     },
   };

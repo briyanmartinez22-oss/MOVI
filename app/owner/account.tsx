@@ -18,23 +18,21 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useProfileBootstrap } from '../../src/hooks/useProfileBootstrap';
 import { getOwnerByUserId } from '../../src/services/profileData';
 import { resolveCurrentProfiles } from '../../src/services/profileCache';
-import { uploadOwnerDocuments, submitOwnerVerification, updateOwnerProfile } from '../../src/services/api';
+import { uploadOwnerDocuments, submitOwnerVerification, updateOwnerProfile, updateUserProfilePhoto } from '../../src/services/api';
 import { pickAndUploadDocument } from '../../src/services/uploadService';
 import { showError, showSuccess } from '../../src/utils/feedback';
+import {
+  assessOwnerVerificationReadiness,
+  getOwnerFlowPhase,
+  ownerCanSubmitVerification,
+  OWNER_DOC_FIELDS_BY_TYPE,
+  OWNER_FLOW_STATUS_LABELS,
+  resolveOwnerDocumentType,
+  type OwnerDocKey,
+} from '../../src/utils/ownerVerificationFlow';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
-const DOC_FIELDS_BY_TYPE = {
-  DUI: [
-    { key: 'duiFront' as const, label: 'DUI — frontal' },
-    { key: 'duiBack' as const, label: 'DUI — trasera' },
-  ],
-  LICENSE: [
-    { key: 'licenseFront' as const, label: 'Licencia — frontal' },
-    { key: 'licenseBack' as const, label: 'Licencia — trasera' },
-  ],
-};
-
-type DocKey = 'duiFront' | 'duiBack' | 'licenseFront' | 'licenseBack';
+type DocKey = OwnerDocKey;
 
 export default function OwnerAccount() {
   const router = useRouter();
@@ -45,8 +43,11 @@ export default function OwnerAccount() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [duiNumber, setDuiNumber] = useState('');
+  const [documentTypeSelection, setDocumentTypeSelection] = useState<'DUI' | 'LICENSE'>('DUI');
   const [editing, setEditing] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<DocKey | null>(null);
+  const [uploadingProfilePhoto, setUploadingProfilePhoto] = useState(false);
   const [submittingVerification, setSubmittingVerification] = useState(false);
   const [localDocUrls, setLocalDocUrls] = useState<Partial<Record<DocKey, string>>>({});
   const [savingProfile, setSavingProfile] = useState(false);
@@ -64,7 +65,9 @@ export default function OwnerAccount() {
       setLastName(parts.slice(1).join(' ') ?? '');
     }
     setEmail((owner as { email?: string } | null)?.email ?? owner?.email ?? '');
-  }, [owner?.name, owner?.email, (owner as { email?: string } | null)?.email]);
+    setDuiNumber(owner?.dui ?? user?.duiNumber ?? '');
+    setDocumentTypeSelection(resolveOwnerDocumentType(owner?.documentType));
+  }, [owner?.name, owner?.email, owner?.dui, owner?.documentType, user?.duiNumber, (owner as { email?: string } | null)?.email]);
 
   const resetProfileForm = () => {
     if (owner?.name) {
@@ -76,6 +79,8 @@ export default function OwnerAccount() {
       setLastName('');
     }
     setEmail(owner?.email ?? (owner as { email?: string } | null)?.email ?? '');
+    setDuiNumber(owner?.dui ?? user?.duiNumber ?? '');
+    setDocumentTypeSelection(resolveOwnerDocumentType(owner?.documentType));
   };
 
   useEffect(() => {
@@ -83,10 +88,11 @@ export default function OwnerAccount() {
     setLocalDocUrls((prev) => ({ ...owner.documents, ...prev }));
   }, [owner?.documents, profileRevision]);
 
-  const documentType: 'DUI' | 'LICENSE' =
-    (owner as { documentType?: string } | null)?.documentType === 'LICENSE' ? 'LICENSE' : 'DUI';
-
-  const docs = DOC_FIELDS_BY_TYPE[documentType];
+  const documentType = documentTypeSelection;
+  const flowPhase = getOwnerFlowPhase(owner?.status);
+  const onboardingMode = ownerCanSubmitVerification(owner?.status);
+  const docs = OWNER_DOC_FIELDS_BY_TYPE[documentType];
+  const profilePhotoUrl = user?.profilePhoto;
 
   const docValues = useMemo<Record<DocKey, string | undefined>>(() => {
     const storedDocs = {
@@ -101,30 +107,46 @@ export default function OwnerAccount() {
     };
   }, [owner?.documents, localDocUrls, profileRevision]);
 
-  const allDocsUploaded = docs.every((d) => Boolean(docValues[d.key]));
+  const verificationReadiness = useMemo(
+    () =>
+      assessOwnerVerificationReadiness({
+        firstName,
+        lastName,
+        dui: duiNumber,
+        phone: owner?.phone ?? user?.phoneNumber,
+        documentType,
+        profilePhoto: profilePhotoUrl,
+        documents: docValues,
+      }),
+    [firstName, lastName, duiNumber, owner?.phone, user?.phoneNumber, documentType, profilePhotoUrl, docValues]
+  );
+
   const canSubmitVerification =
-    Boolean(owner?.id) && allDocsUploaded && !submittingVerification && owner?.status !== 'approved';
+    Boolean(resolvedOwnerId) &&
+    verificationReadiness.ready &&
+    ownerCanSubmitVerification(owner?.status) &&
+    !submittingVerification;
 
   useEffect(() => {
-    console.log('[OWNER_DOC_UI_DEBUG]', {
+    console.log('[OWNER_VERIFICATION_DEBUG]', {
       ownerId: owner?.id ?? null,
-      profileRevision,
-      documents: docValues,
-      allDocsUploaded,
+      flowPhase,
+      verificationReadiness,
       canSubmitVerification,
-      profileSyncing,
-      uploadingKey,
-      submittingVerification,
+      profilePhoto: Boolean(profilePhotoUrl),
+      documents: docValues,
     });
   }, [
     owner?.id,
     profileRevision,
     docValues,
-    allDocsUploaded,
     canSubmitVerification,
     profileSyncing,
     uploadingKey,
     submittingVerification,
+    flowPhase,
+    verificationReadiness,
+    profilePhotoUrl,
   ]);
 
   const toggleEditing = () => {
@@ -144,6 +166,8 @@ export default function OwnerAccount() {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       email: email.trim() || undefined,
+      documentType: documentTypeSelection,
+      dui: duiNumber.trim() || undefined,
     };
 
     if (!payload.firstName) {
@@ -241,12 +265,50 @@ export default function OwnerAccount() {
     ]);
   };
 
-  const statusLabel =
-    owner?.status === 'approved' ? 'Aprobado'
-    : owner?.status === 'suspended' ? 'Suspendido'
-    : owner?.status === 'rejected' ? 'Rechazado'
-    : owner?.status === 'pending' ? 'Pendiente'
-    : owner?.status ?? 'Desconocido';
+  const statusLabel = OWNER_FLOW_STATUS_LABELS[flowPhase];
+
+  const persistProfileFields = async () => {
+    if (!resolvedOwnerId) {
+      return { ok: false as const, error: 'Tu perfil de dueño aún se está sincronizando.' };
+    }
+    if (!firstName.trim()) {
+      return { ok: false as const, error: 'El nombre es obligatorio.' };
+    }
+    return updateOwnerProfile({
+      firstName: firstName.trim(),
+      lastName: lastName.trim() || '',
+      email: email.trim() || undefined,
+      documentType: documentTypeSelection,
+      dui: duiNumber.trim() || undefined,
+    });
+  };
+
+  const uploadProfilePhoto = async () => {
+    if (!user?.userId || !resolvedOwnerId) {
+      setError('Tu perfil de dueño aún se está sincronizando. Intenta de nuevo en unos segundos.');
+      return;
+    }
+    setError('');
+    setUploadingProfilePhoto(true);
+    try {
+      const url = await pickAndUploadDocument('selfie');
+      if (!url) return;
+      const res = await updateUserProfilePhoto(user.userId, url);
+      if (!res.ok) {
+        setError(res.error ?? 'No se pudo guardar la foto de perfil.');
+        showError('Error al subir foto', res.error ?? 'No se pudo guardar la foto de perfil.');
+        return;
+      }
+      refresh();
+      showSuccess('Foto de perfil', 'Tu foto se guardó correctamente.');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'No se pudo subir la foto de perfil.';
+      setError(message);
+      showError('Error al subir foto', message);
+    } finally {
+      setUploadingProfilePhoto(false);
+    }
+  };
 
   const phoneValue = owner?.phone ?? (user as { phone?: string } | null)?.phone ?? user?.phoneNumber ?? '—';
 
@@ -303,35 +365,53 @@ export default function OwnerAccount() {
   };
 
   const handleSubmitVerification = async () => {
-    const id = owner?.id;
+    const id = resolvedOwnerId;
     if (!id) {
       setError('Tu perfil de dueño aún se está sincronizando. Intenta de nuevo en unos segundos.');
       return;
     }
-    if (!allDocsUploaded) {
-      setError('Debes subir ambos lados del documento antes de enviar la verificación.');
+    if (!verificationReadiness.ready) {
+      setError(`Completa tu verificación: ${verificationReadiness.missing.join(', ')}.`);
+      return;
+    }
+    if (!ownerCanSubmitVerification(owner?.status)) {
+      setError('Tu verificación ya fue enviada o no puede reenviarse en este estado.');
       return;
     }
 
     setError('');
     setSubmittingVerification(true);
+    console.log('[OWNER_VERIFICATION_DEBUG]', { action: 'submit_start', ownerId: id });
+
     try {
-      const res = await submitOwnerVerification(id);
-      if (!res.ok) {
-        setError(res.error ?? 'No se pudo enviar la verificación');
+      const saveRes = await persistProfileFields();
+      if (!saveRes.ok) {
+        setError(saveRes.error ?? 'No se pudieron guardar tus datos antes de enviar.');
+        showError('Datos incompletos', saveRes.error ?? 'No se pudieron guardar tus datos.');
         return;
       }
       refresh();
-      Alert.alert(
+
+      const res = await submitOwnerVerification(id);
+      if (!res.ok) {
+        setError(res.error ?? 'No se pudo enviar la verificación');
+        showError('Error al enviar', res.error ?? 'No se pudo enviar la verificación');
+        return;
+      }
+      refresh();
+      showSuccess(
         'Verificación enviada',
         'Tus documentos fueron enviados para revisión del equipo MOVI.'
       );
     } catch {
       setError('No se pudo enviar la verificación.');
+      showError('Error al enviar', 'No se pudo enviar la verificación.');
     } finally {
       setSubmittingVerification(false);
     }
   };
+
+  const showVerificationForm = onboardingMode || editing;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -353,32 +433,61 @@ export default function OwnerAccount() {
         </Card>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Perfil</Text>
-          <TouchableOpacity onPress={toggleEditing}>
-            <Text style={styles.linkText}>{editing ? 'Cancelar' : 'Editar'}</Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>
+            {onboardingMode ? 'Completa tu verificación' : 'Perfil'}
+          </Text>
+          {!onboardingMode ? (
+            <TouchableOpacity onPress={toggleEditing}>
+              <Text style={styles.linkText}>{editing ? 'Cancelar' : 'Editar'}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
+        {onboardingMode ? (
+          <Text style={styles.profileHint}>
+            Completa todos los datos y documentos. Solo cuando presiones «Enviar verificación» tu
+            solicitud aparecerá en revisión del equipo MOVI.
+          </Text>
+        ) : null}
+
         <Card>
-          {editing ? (
+          {showVerificationForm ? (
             <>
               <FormInput label="Nombres" value={firstName} onChangeText={setFirstName} placeholder="Nombre" />
               <FormInput label="Apellidos" value={lastName} onChangeText={setLastName} placeholder="Apellido" />
-              <FormInput label="Correo" value={email} onChangeText={setEmail} placeholder="correo@ejemplo.com" />
-              {!resolvedOwnerId ? (
-                <Text style={styles.profileHint}>
-                  Tu perfil de dueño aún se está sincronizando. Guardar estará disponible en unos segundos.
-                </Text>
+              <InfoRow label="Teléfono" value={phoneValue} />
+              <FormInput label="Número de documento" value={duiNumber} onChangeText={setDuiNumber} placeholder="00000000-0" />
+              <FormInput label="Correo (opcional)" value={email} onChangeText={setEmail} placeholder="correo@ejemplo.com" />
+              <Text style={styles.fieldLabel}>Tipo de documento</Text>
+              <View style={styles.typeRow}>
+                {(['DUI', 'LICENSE'] as const).map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.typeBtn, documentTypeSelection === type && styles.typeBtnActive]}
+                    onPress={() => setDocumentTypeSelection(type)}
+                  >
+                    <Text style={styles.typeBtnText}>{type === 'DUI' ? 'DUI' : 'Licencia'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {!onboardingMode ? (
+                <>
+                  {!resolvedOwnerId ? (
+                    <Text style={styles.profileHint}>
+                      Tu perfil de dueño aún se está sincronizando. Guardar estará disponible en unos segundos.
+                    </Text>
+                  ) : null}
+                  {profileError ? <Text style={styles.error}>{profileError}</Text> : null}
+                  {profileSuccess ? <Text style={styles.success}>{profileSuccess}</Text> : null}
+                  <PrimaryButton
+                    title={savingProfile ? 'Guardando…' : 'Guardar cambios'}
+                    onPress={handleSavePress}
+                    loading={savingProfile}
+                    disabled={saveProfileDisabled}
+                    style={{ marginTop: spacing.md }}
+                  />
+                </>
               ) : null}
-              {profileError ? <Text style={styles.error}>{profileError}</Text> : null}
-              {profileSuccess ? <Text style={styles.success}>{profileSuccess}</Text> : null}
-              <PrimaryButton
-                title={savingProfile ? 'Guardando…' : 'Guardar cambios'}
-                onPress={handleSavePress}
-                loading={savingProfile}
-                disabled={saveProfileDisabled}
-                style={{ marginTop: spacing.md }}
-              />
             </>
           ) : (
             <>
@@ -390,6 +499,43 @@ export default function OwnerAccount() {
               <InfoRow label="Tipo de documento" value={documentType === 'DUI' ? 'DUI' : 'Licencia'} />
             </>
           )}
+        </Card>
+
+        <Text style={styles.sectionTitle}>Foto de perfil</Text>
+        <Card>
+          <TouchableOpacity
+            style={[styles.docBtn, profilePhotoUrl ? styles.docBtnDone : styles.docBtnPending]}
+            onPress={() => void uploadProfilePhoto()}
+            disabled={
+              uploadingProfilePhoto ||
+              profileSyncing ||
+              flowPhase === 'submitted' ||
+              flowPhase === 'approved'
+            }
+            activeOpacity={0.75}
+          >
+            <View style={styles.docLeft}>
+              {uploadingProfilePhoto ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons
+                  name={profilePhotoUrl ? 'checkmark-circle' : 'camera-outline'}
+                  size={22}
+                  color={profilePhotoUrl ? colors.online : colors.textSecondary}
+                />
+              )}
+              <View style={styles.docTexts}>
+                <Text style={styles.docLabel}>Foto de perfil</Text>
+                <Text style={[styles.docStatus, profilePhotoUrl && styles.docStatusDone]}>
+                  {uploadingProfilePhoto
+                    ? 'Subiendo…'
+                    : profilePhotoUrl
+                      ? 'Subida · tocar para reemplazar'
+                      : 'Obligatoria · tocar para subir'}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
         </Card>
 
         <Text style={styles.sectionTitle}>Documentos</Text>
@@ -453,8 +599,13 @@ export default function OwnerAccount() {
             </TouchableOpacity>
           ) : null}
 
-          {owner?.status !== 'approved' ? (
+          {owner?.status !== 'approved' && ownerCanSubmitVerification(owner?.status) ? (
             <>
+              {!verificationReadiness.ready ? (
+                <Text style={styles.verifyHint}>
+                  Falta completar: {verificationReadiness.missing.join(', ')}.
+                </Text>
+              ) : null}
               <PrimaryButton
                 title={submittingVerification ? 'Enviando…' : 'Enviar verificación'}
                 onPress={handleSubmitVerification}
@@ -462,12 +613,15 @@ export default function OwnerAccount() {
                 disabled={!canSubmitVerification}
                 style={{ marginTop: spacing.md }}
               />
-              {!allDocsUploaded ? (
-                <Text style={styles.verifyHint}>
-                  Sube los {docs.length} documentos requeridos para enviar tu verificación.
-                </Text>
-              ) : null}
             </>
+          ) : flowPhase === 'submitted' ? (
+            <Text style={styles.verifyHint}>
+              Tu verificación fue enviada y está en revisión. Te avisaremos cuando sea aprobada.
+            </Text>
+          ) : flowPhase === 'rejected' ? (
+            <Text style={styles.error}>
+              Tu verificación fue rechazada. Corrige tus datos y vuelve a enviar la verificación.
+            </Text>
           ) : (
             <Text style={styles.verifyHint}>Tu verificación fue aprobada.</Text>
           )}
@@ -526,6 +680,20 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { ...typography.subtitle, color: colors.text },
   linkText: { ...typography.body, color: colors.brandRed },
+  fieldHint: { ...typography.caption, color: colors.textSecondary, marginTop: -4, marginBottom: spacing.sm },
+  fieldLabel: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs },
+  typeRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  typeBtn: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.borderLight,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  typeBtnActive: { borderColor: colors.primary, backgroundColor: colors.surface },
+  typeBtnText: { ...typography.caption, color: colors.text },
   profileHint: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },
   docHint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md },
   docBtn: {

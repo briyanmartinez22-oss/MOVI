@@ -239,6 +239,8 @@ export async function updateOwnerProfile(payload: {
   firstName: string;
   lastName?: string;
   email?: string;
+  documentType?: 'DUI' | 'LICENSE';
+  dui?: string;
 }): Promise<ApiResponse<{ owner: Owner; user: AuthUser }>> {
   const endpoint = '/owners/me/profile';
   const method = 'POST';
@@ -255,7 +257,13 @@ export async function updateOwnerProfile(payload: {
   });
 
   if (useMockApi()) {
-    const res = await mock.updateOwnerProfile(payload.firstName, payload.lastName, payload.email);
+    const res = await mock.updateOwnerProfile(
+      payload.firstName,
+      payload.lastName ?? '',
+      payload.email,
+      payload.documentType,
+      payload.dui
+    );
     console.log('[OWNER_EDIT_DEBUG]', {
       action: 'response',
       endpoint,
@@ -321,8 +329,15 @@ export async function submitOwnerVerification(
     specialCase,
     ownershipProofImage,
   });
-  if (res.ok && res.data) setProfileCache({ owner: res.data });
-  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al enviar verificación');
+  if (res.ok && res.data) {
+    const owner = mapOwner(
+      res.data as unknown as Record<string, unknown>,
+      resolveCachedProfiles().user?.userId
+    );
+    if (owner) setProfileCache({ owner });
+    return owner ? ok(owner) : fail('No se pudo normalizar el perfil del dueño.');
+  }
+  return fail(res.error ?? 'Error al enviar verificación');
 }
 
 export async function registerVehicle(
