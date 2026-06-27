@@ -1,7 +1,9 @@
 import { Stack } from 'expo-router';
 import { AuthShell } from '../../src/components/AuthShell';
+import { useDriverAccessGuard } from '../../src/hooks/useDriverAccessGuard';
 
 export default function DriverLayout() {
+  useDriverAccessGuard();
   return (
     <AuthShell>
       <Stack screenOptions={{ headerShown: false, animation: 'slide_from_bottom' }}>

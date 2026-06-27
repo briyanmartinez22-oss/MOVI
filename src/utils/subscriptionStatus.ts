@@ -1,16 +1,19 @@
 import type { DriverSubscription } from '../types/models';
+import { canDriverOperateSubscription } from '../services/subscriptionService';
 
-export type MvpSubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED';
+export type MvpSubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'BLOCKED';
 
 export const MVP_MONTHLY_FEE_USD = 7;
 
 export function mapSubscriptionMvpStatus(sub: DriverSubscription): MvpSubscriptionStatus {
+  if (sub.status === 'suspended') return 'BLOCKED';
   if (sub.status === 'active') return 'ACTIVE';
+  if (sub.status === 'past_due') return 'PAST_DUE';
   if (sub.status === 'trial_until_next_month') {
     const trialEnd = new Date(sub.trialEndsAt);
-    return new Date() < trialEnd ? 'TRIAL' : 'EXPIRED';
+    return new Date() < trialEnd ? 'TRIAL' : 'PAST_DUE';
   }
-  return 'EXPIRED';
+  return 'PAST_DUE';
 }
 
 export function canOperateWithSubscription(sub: DriverSubscription | undefined): {
@@ -18,22 +21,21 @@ export function canOperateWithSubscription(sub: DriverSubscription | undefined):
   reason?: string;
   mvpStatus: MvpSubscriptionStatus;
 } {
-  if (!sub) {
-    return { allowed: true, mvpStatus: 'TRIAL' };
-  }
-  const mvpStatus = mapSubscriptionMvpStatus(sub);
-  if (mvpStatus === 'EXPIRED') {
+  const guard = canDriverOperateSubscription(sub);
+  const mvpStatus = sub ? mapSubscriptionMvpStatus(sub) : 'TRIAL';
+  if (!guard.allowed) {
     return {
       allowed: false,
-      mvpStatus,
-      reason: `Suscripción vencida. Renueva tu plan de $${MVP_MONTHLY_FEE_USD} USD/mes.`,
+      mvpStatus: mvpStatus === 'TRIAL' ? 'PAST_DUE' : mvpStatus,
+      reason: guard.reason,
     };
   }
   return { allowed: true, mvpStatus };
 }
 
 export const MVP_SUBSCRIPTION_LABELS: Record<MvpSubscriptionStatus, string> = {
-  TRIAL: 'Periodo de prueba',
+  TRIAL: 'Prueba gratis',
   ACTIVE: 'Activa',
-  EXPIRED: 'Vencida',
+  PAST_DUE: 'Pago pendiente',
+  BLOCKED: 'Bloqueada',
 };

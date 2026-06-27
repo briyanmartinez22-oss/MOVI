@@ -1,4 +1,5 @@
 import { Coordinates } from './index';
+import { canDriverOperate as evaluateDriverOperation } from '../domain/moviFlow';
 
 export type UserRole = 'passenger' | 'driver' | 'owner' | 'business' | 'admin';
 
@@ -371,19 +372,7 @@ export function canOperate(
   if (subscriptionBlocked) {
     return { allowed: false, reason: subscriptionReason ?? 'Suscripción no activa.' };
   }
-  if (!owner || owner.status !== 'approved') {
-    return { allowed: false, reason: 'Dueño no aprobado.' };
-  }
-  if (!vehicle || vehicle.status !== 'approved') {
-    return { allowed: false, reason: 'Unidad no aprobada.' };
-  }
-  if (!driver || driver.status !== 'approved') {
-    return { allowed: false, reason: 'Conductor pendiente de aprobación administrativa.' };
-  }
-  if (!driver.inviteCodeUsed) {
-    return { allowed: false, reason: 'Conductor no invitado por el dueño.' };
-  }
-  return { allowed: true };
+  return evaluateDriverOperation({ owner, vehicle, driver });
 }
 
 export function placeFromCoordinates(

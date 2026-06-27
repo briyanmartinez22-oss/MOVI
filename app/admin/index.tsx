@@ -44,7 +44,7 @@ const SECTIONS: DashSection[] = [
     color: '#964219',
     permission: 'drivers.approve',
     actions: [
-      { label: 'Pendientes', icon: 'hourglass', route: '/admin/verifications', badge: 'nuevo', permission: 'drivers.approve' },
+      { label: 'Pendientes', icon: 'hourglass', route: '/admin/verifications', permission: 'drivers.approve' },
       { label: 'Conductores', icon: 'person', route: '/admin/drivers', permission: 'drivers.view' },
       { label: 'Dueños', icon: 'business', route: '/admin/owners', permission: 'owners.view' },
       { label: 'Vehículos', icon: 'car-sport', route: '/admin/vehicles', permission: 'owners.fleet' },

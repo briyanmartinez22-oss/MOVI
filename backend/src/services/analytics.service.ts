@@ -6,6 +6,7 @@ import {
   mapOwnerMvpStatus,
   mapVehicleMvpStatus,
 } from '../utils/verification-status';
+import { getDriverLicenseUrls } from '../utils/driver-license-docs';
 
 type CountAggregate = { _count: { _all: number } };
 type VehicleTypeGroup = CountAggregate & { vehicleType: string };
@@ -109,7 +110,7 @@ export async function getAdminKpis() {
 }
 
 export async function listPendingVerifications() {
-  const [owners, vehicles, drivers] = await Promise.all([
+  const [owners, vehicles, driversRaw] = await Promise.all([
     prisma.owner.findMany({
       where: { status: 'under_review', deletedAt: null },
       include: { user: { select: { profilePhoto: true } } },
@@ -125,14 +126,29 @@ export async function listPendingVerifications() {
       where: { status: 'pending', deletedAt: null },
       include: { vehicle: true, user: { select: { profilePhoto: true } } },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: 200,
     }),
   ]);
 
-  console.log('[OWNER_ADMIN_QUEUE_DEBUG]', {
-    ownersUnderReview: owners.length,
-    vehiclesUnderReview: vehicles.length,
-    driversPending: drivers.length,
+  const drivers: Array<(typeof driversRaw)[number] & {
+    licenseFront?: string;
+    licenseBack?: string;
+  }> = [];
+  for (const driver of driversRaw) {
+    const licenseUrls = await getDriverLicenseUrls(driver.id);
+    if (!licenseUrls.licenseFront?.trim() || !licenseUrls.licenseBack?.trim()) continue;
+    drivers.push({
+      ...driver,
+      licenseFront: licenseUrls.licenseFront,
+      licenseBack: licenseUrls.licenseBack,
+    });
+  }
+
+  console.log('[MOVI_ADMIN_DEBUG]', {
+    ownersSubmitted: owners.length,
+    vehiclesSubmitted: vehicles.length,
+    driversSubmitted: drivers.length,
+    driversPendingTotal: driversRaw.length,
   });
 
   return {
@@ -178,6 +194,9 @@ export async function listPendingVerifications() {
       mvpStatus: mapDriverMvpStatus(d.status),
       unitNumber: d.vehicle.unitNumber,
       plateNumber: d.vehicle.plateNumber,
+      profilePhoto: d.user.profilePhoto ?? undefined,
+      licenseFront: d.licenseFront,
+      licenseBack: d.licenseBack,
       createdAt: d.createdAt.toISOString(),
     })),
   };

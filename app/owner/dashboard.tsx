@@ -12,6 +12,7 @@ import {
   getOwnerDashboardStats,
   getOwnerSessions,
 } from '../../src/services/profileData';
+import { getOwnerFlowPhase, MOVI_FLOW_LABELS, ownerMustCompleteOnboarding } from '../../src/domain/moviFlow';
 import { colors, typography, spacing, radius } from '../../src/theme';
 
 export default function OwnerDashboard() {
@@ -51,22 +52,31 @@ export default function OwnerDashboard() {
   const todayTrips = stats?.trips ?? 0;
   const todayKm = stats?.kilometers ?? 0;
 
+  const flowPhase = getOwnerFlowPhase(owner.status);
   const statusColor =
-    owner.status === 'approved' ? colors.success
-    : owner.status === 'suspended' ? colors.danger
-    : colors.warning;
-
-  const statusLabel =
-    owner.status === 'approved' ? 'Aprobado'
-    : owner.status === 'suspended' ? 'Suspendido'
-    : owner.status === 'pending' ? 'Pendiente de aprobación'
-    : owner.status;
+    flowPhase === 'approved' ? colors.success
+    : flowPhase === 'blocked' ? colors.danger
+    : flowPhase === 'submitted' ? colors.warning
+    : colors.textSecondary;
+  const statusLabel = MOVI_FLOW_LABELS[flowPhase];
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScreenHeader title={`Hola, ${owner.firstName || owner.name}`} />
+      <ScreenHeader title={`Hola, ${owner.name.split(' ')[0] ?? owner.name}`} />
       <ScrollView contentContainerStyle={styles.content}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        {ownerMustCompleteOnboarding(owner.status) ? (
+          <TouchableOpacity style={styles.onboardingBanner} onPress={() => router.push('/owner/account' as never)}>
+            <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.onboardingTitle}>Completa tu verificación</Text>
+              <Text style={styles.onboardingDesc}>
+                Debes terminar tu perfil, foto y documentos antes de operar con MOVI.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        ) : null}
         <View style={styles.statusRow}>
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
           <Text style={styles.statusText}>{statusLabel}</Text>
@@ -128,7 +138,19 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, gap: spacing.md },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { ...typography.caption, color: colors.textSecondary, textTransform: 'capitalize' },
+  statusText: { ...typography.caption, color: colors.textSecondary },
+  onboardingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  onboardingTitle: { ...typography.bodyMedium, color: colors.text },
+  onboardingDesc: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   sectionTitle: { ...typography.subtitle, color: colors.text },
   statsRow: { flexDirection: 'row', gap: spacing.sm },
   stat: { flex: 1, alignItems: 'center', paddingVertical: spacing.md },

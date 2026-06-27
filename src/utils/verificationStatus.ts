@@ -1,12 +1,15 @@
+/**
+ * Mapeo legacy → estados MVP/admin simplificados.
+ * Los estados de DB se conservan; la UI usa fases simples vía src/domain/moviFlow.ts.
+ */
 export type MvpVerificationStatus =
   | 'PENDING_DOCUMENTS'
   | 'PENDING_REVIEW'
+  | 'PENDING_APPROVAL'
   | 'VERIFIED'
   | 'REJECTED'
   | 'SUSPENDED'
   | 'DELETED';
-
-export type MvpSubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED';
 
 const OWNER_MAP: Record<string, MvpVerificationStatus> = {
   pending: 'PENDING_DOCUMENTS',
@@ -30,7 +33,7 @@ const VEHICLE_MAP: Record<string, MvpVerificationStatus> = {
 };
 
 const DRIVER_MAP: Record<string, MvpVerificationStatus> = {
-  pending: 'PENDING_REVIEW',
+  pending: 'PENDING_APPROVAL',
   approved: 'VERIFIED',
   rejected: 'REJECTED',
   suspended: 'SUSPENDED',
@@ -45,15 +48,16 @@ export function mapVehicleMvpStatus(status: string): MvpVerificationStatus {
 }
 
 export function mapDriverMvpStatus(status: string): MvpVerificationStatus {
-  return DRIVER_MAP[status] ?? 'PENDING_REVIEW';
+  return DRIVER_MAP[status] ?? 'PENDING_APPROVAL';
 }
 
 export const MVP_STATUS_LABELS: Record<MvpVerificationStatus, string> = {
-  PENDING_DOCUMENTS: 'Documentos pendientes',
+  PENDING_DOCUMENTS: 'Incompleto',
   PENDING_REVIEW: 'En revisión',
-  VERIFIED: 'Verificado',
+  PENDING_APPROVAL: 'Pendiente de aprobación',
+  VERIFIED: 'Aprobado',
   REJECTED: 'Rechazado',
-  SUSPENDED: 'Suspendido',
+  SUSPENDED: 'Bloqueado',
   DELETED: 'Eliminado',
 };
 

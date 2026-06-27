@@ -1,11 +1,17 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthShell } from '../../src/components/AuthShell';
-import { useOwnerVerificationRedirect } from '../../src/hooks/useOwnerVerificationRedirect';
+import { useOwnerAccessGuard } from '../../src/hooks/useOwnerAccessGuard';
+import { ownerCanOperateFleet } from '../../src/domain/moviFlow';
+import { useAuth } from '../../src/context/AuthContext';
+import { getOwnerByUserId } from '../../src/services/profileData';
 import { colors } from '../../src/theme';
 
 export default function OwnerLayout() {
-  useOwnerVerificationRedirect();
+  useOwnerAccessGuard();
+  const { user } = useAuth();
+  const owner = user ? getOwnerByUserId(user.userId) : null;
+  const fleetEnabled = ownerCanOperateFleet(owner?.status);
 
   return (
     <AuthShell>
@@ -29,6 +35,7 @@ export default function OwnerLayout() {
           name="vehicles"
           options={{
             title: 'Unidades',
+            href: fleetEnabled ? undefined : null,
             tabBarIcon: ({ color, size }) => <Ionicons name="car-outline" size={size} color={color} />,
           }}
         />
@@ -36,6 +43,7 @@ export default function OwnerLayout() {
           name="reports"
           options={{
             title: 'Reportes',
+            href: fleetEnabled ? undefined : null,
             tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />,
           }}
         />

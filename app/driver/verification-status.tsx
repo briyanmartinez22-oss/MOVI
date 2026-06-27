@@ -54,7 +54,10 @@ export default function DriverVerificationStatusScreen() {
 
   const op = canOperate(owner, vehicle, driver);
   const allVerified =
-    isVerified(ownerMvp) && isVerified(vehicleMvp) && isVerified(driverMvp) && subStatus !== 'EXPIRED';
+    isVerified(ownerMvp) &&
+    isVerified(vehicleMvp) &&
+    isVerified(driverMvp) &&
+    (subStatus === 'ACTIVE' || subStatus === 'TRIAL');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -71,7 +74,7 @@ export default function DriverVerificationStatusScreen() {
           <StatusRow label="Conductor" status={driverMvp} />
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Suscripción</Text>
-            <Text style={[styles.rowStatus, subStatus === 'EXPIRED' ? styles.pending : styles.ok]}>
+            <Text style={[styles.rowStatus, subStatus === 'PAST_DUE' || subStatus === 'BLOCKED' ? styles.pending : styles.ok]}>
               {MVP_SUBSCRIPTION_LABELS[subStatus as keyof typeof MVP_SUBSCRIPTION_LABELS]}
             </Text>
           </View>
