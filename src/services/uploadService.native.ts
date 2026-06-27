@@ -58,8 +58,6 @@ export async function pickAndUploadDocument(documentType?: string): Promise<stri
     selectionLimit: 1,
   });
 
-  console.log('[UPLOAD] picker result', result);
-
   if (result.canceled || !result.assets?.[0]?.uri) {
     return null;
   }

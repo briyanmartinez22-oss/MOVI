@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
 import { SESSION_KEYS } from './authService';
 import { getApiUrl } from './api/config';
 
@@ -55,17 +54,6 @@ export async function sendUploadRequest(
     formData.append('documentType', documentType);
   }
 
-  console.log('[UPLOAD] starting', {
-    platform: Platform.OS,
-    uri,
-    resolvedName,
-    resolvedType,
-    documentType,
-    apiBase,
-    hasToken: Boolean(token),
-    directWebFile: Boolean(options?.directWebFile),
-  });
-
   const res = await fetch(`${apiBase}/uploads`, {
     method: 'POST',
     headers: {
@@ -76,8 +64,6 @@ export async function sendUploadRequest(
   });
 
   const rawText = await res.text();
-  console.log('[UPLOAD] response status', res.status);
-  console.log('[UPLOAD] response body', rawText);
 
   let json: any = null;
   try {

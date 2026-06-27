@@ -32,7 +32,7 @@ function StatusRow({ label, status }: { label: string; status: string }) {
 
 export default function DriverVerificationStatusScreen() {
   const router = useRouter();
-  const { user, refresh } = useAuth();
+  const { user } = useAuth();
   const [subStatus, setSubStatus] = useState('TRIAL');
 
   const owner = user ? getOwnerByUserId(user.userId) : undefined;
@@ -49,9 +49,8 @@ export default function DriverVerificationStatusScreen() {
   }, []);
 
   useEffect(() => {
-    refresh();
     void loadSub();
-  }, [refresh, loadSub]);
+  }, [loadSub]);
 
   const op = canOperate(owner, vehicle, driver);
   const allVerified =

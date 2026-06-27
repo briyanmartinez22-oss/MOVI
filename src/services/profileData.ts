@@ -23,7 +23,11 @@ import {
   resolveCurrentProfiles,
   setProfileCache,
 } from './profileCache';
+import { markFullProfileHydrated } from './profileHydration';
 import * as mock from './mockStore';
+
+let profilesRefreshInFlight: Promise<{ ok: boolean; error?: string }> | null = null;
+let ownerFleetRefreshInFlight: Promise<{ ok: boolean; error?: string }> | null = null;
 
 export {
   formatDate,
@@ -197,8 +201,7 @@ export function getBusinessDashboardStats(businessId: string) {
   };
 }
 
-export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: string }> {
-  if (useMockApi()) return { ok: true };
+async function runRefreshProfilesFromApi(): Promise<{ ok: boolean; error?: string }> {
   const profiles = await api.fetchUserProfiles();
   const currentUser = profiles.user;
   if (!currentUser) return { ok: false, error: 'No se pudieron cargar los perfiles.' };
@@ -260,14 +263,35 @@ export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: s
     tripHistory: history,
   });
 
+  markFullProfileHydrated(currentUser.userId);
   return { ok: true };
+}
+
+export async function refreshProfilesFromApi(): Promise<{ ok: boolean; error?: string }> {
+  if (useMockApi()) return { ok: true };
+  if (profilesRefreshInFlight) return profilesRefreshInFlight;
+
+  profilesRefreshInFlight = runRefreshProfilesFromApi().finally(() => {
+    profilesRefreshInFlight = null;
+  });
+
+  return profilesRefreshInFlight;
 }
 
 export async function refreshOwnerFleet(): Promise<{ ok: boolean; error?: string }> {
   if (useMockApi()) return { ok: true };
-  const res = await api.fetchOwnerVehicles();
-  if (!res.ok) return { ok: false, error: res.error ?? 'Error al cargar vehículos' };
-  return { ok: true };
+  if (ownerFleetRefreshInFlight) return ownerFleetRefreshInFlight;
+
+  ownerFleetRefreshInFlight = (async () => {
+    const res = await api.fetchOwnerVehicles();
+    if (!res.ok) return { ok: false, error: res.error ?? 'Error al cargar vehículos' };
+    if (res.data) setProfileCache({ vehicles: res.data });
+    return { ok: true };
+  })().finally(() => {
+    ownerFleetRefreshInFlight = null;
+  });
+
+  return ownerFleetRefreshInFlight;
 }
 
 export async function refreshDriverSessions(driverId: string): Promise<DriverSession[]> {

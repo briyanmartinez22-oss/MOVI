@@ -17,10 +17,21 @@ import {
   getAllSessionsByDriver,
   getActiveSession,
   getDriverByUserId,
-  refreshDriverSessions,
   refreshProfilesFromApi,
 } from '../services/profileData';
 import { loadStore, setCurrentUser } from '../services/mockStore';
+import { resetProfileHydration } from '../services/profileHydration';
+
+function authUsersEqual(a: AuthUser | null, b: AuthUser | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.userId === b.userId &&
+    a.role === b.role &&
+    a.phoneNumber === b.phoneNumber &&
+    a.fullName === b.fullName
+  );
+}
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -35,6 +46,7 @@ interface AuthContextValue {
   setInitialPassword: (phone: string, code: string, password: string, confirmPassword: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => void;
+  profileRevision: number;
   bootstrap: () => Promise<void>;
   registerPassenger: (phone: string, fullName: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   registerOwner: (
@@ -66,10 +78,12 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileRevision, setProfileRevision] = useState(0);
 
   const refresh = useCallback(() => {
     const { user: current } = api.resolveCurrentProfiles();
-    setUser(current);
+    setUser((prev) => (authUsersEqual(prev, current) ? prev : current));
+    setProfileRevision((value) => value + 1);
   }, []);
 
   const bootstrap = useCallback(async () => {
@@ -188,7 +202,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await authService.logout();
+    resetProfileHydration();
     setUser(null);
+    setProfileRevision(0);
   }, []);
 
   const registerPassenger = useCallback(async (phone: string, fullName: string, password: string) => {
@@ -272,7 +288,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.userId]);
 
   const getAllDriverSessions = useCallback((driverId: string) => {
-    if (!useMockApi()) void refreshDriverSessions(driverId);
     return getAllSessionsByDriver(driverId);
   }, []);
 
@@ -290,6 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setInitialPassword,
       logout,
       refresh,
+      profileRevision,
       bootstrap,
       registerPassenger,
       registerOwner,
@@ -300,6 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       user,
       isLoading,
+      profileRevision,
       requestOtp,
       verifyOtp,
       login,

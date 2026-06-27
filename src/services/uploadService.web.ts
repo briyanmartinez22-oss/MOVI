@@ -68,7 +68,6 @@ export async function uploadPickedAsset(
 
 export async function pickAndUploadDocument(documentType?: string): Promise<string | null> {
   const picked = await pickWebFile();
-  console.log('[UPLOAD] web picker result', picked ? { fileName: picked.fileName, mimeType: picked.mimeType } : null);
   if (!picked) {
     return null;
   }

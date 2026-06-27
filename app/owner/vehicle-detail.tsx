@@ -179,7 +179,7 @@ export default function VehicleDetail() {
     if (res.data?.licenseFront) setLicenseFront(res.data.licenseFront);
     if (res.data?.licenseBack) setLicenseBack(res.data.licenseBack);
     setSubmitted(true);
-    await reload();
+    await reload(true);
     showSuccess(
       driverApproved ? 'Conductor aprobado' : 'Licencia enviada',
       res.data?.message ??

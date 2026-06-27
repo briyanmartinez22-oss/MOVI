@@ -36,9 +36,10 @@ type DocKey = 'duiFront' | 'duiBack' | 'licenseFront' | 'licenseBack';
 
 export default function OwnerAccount() {
   const router = useRouter();
-  const { user, logout, refresh } = useAuth();
+  const { user, logout, refresh, profileRevision } = useAuth();
   const { loading, error: bootstrapError, reload } = useProfileBootstrap('owner');
   const owner = user ? getOwnerByUserId(user.userId) : null;
+  void profileRevision;
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -48,12 +49,6 @@ export default function OwnerAccount() {
   const [submittingVerification, setSubmittingVerification] = useState(false);
   const [error, setError] = useState('');
   const profileSyncing = Boolean(user?.role === 'owner' && !owner?.id);
-
-  useEffect(() => {
-    if (!loading && owner) {
-      refresh();
-    }
-  }, [loading, owner?.id, refresh]);
 
   useEffect(() => {
     if (owner?.name) {
@@ -282,7 +277,7 @@ export default function OwnerAccount() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           {profileSyncing ? (
-            <TouchableOpacity onPress={() => void reload()} style={{ marginTop: spacing.sm }}>
+            <TouchableOpacity onPress={() => void reload(true)} style={{ marginTop: spacing.sm }}>
               <Text style={styles.linkText}>Reintentar sincronización</Text>
             </TouchableOpacity>
           ) : null}

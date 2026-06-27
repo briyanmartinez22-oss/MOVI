@@ -4,6 +4,7 @@ import { useMockApi } from '../config/env';
 import { apiGet, apiPost } from './api/client';
 import { getCurrentUser, getStore, saveStore, setCurrentUser, updateStore } from './mockStore';
 import { clearProfileCache, setProfileCache } from './profileCache';
+import { resetProfileHydration } from './profileHydration';
 import { realtimeClient } from './realtimeClient';
 import { syncPushTokenAfterAuth } from './pushNotificationService';
 
@@ -111,6 +112,7 @@ export async function logout(): Promise<void> {
     }
     realtimeClient.disconnect();
     clearProfileCache();
+    resetProfileHydration();
   }
 
   await AsyncStorage.multiRemove([
