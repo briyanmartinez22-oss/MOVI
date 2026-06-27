@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card, ScreenHeader, StatusBadge, FormInput } from '../../src/components/FormUI';
 import { BrandedLoadingView } from '../../src/components/BrandedLoadingView';
 import { PrimaryButton } from '../../src/components';
+import { OwnerProfileAvatar } from '../../src/components/OwnerProfileAvatar';
 import { useAuth } from '../../src/context/AuthContext';
 import { useProfileBootstrap } from '../../src/hooks/useProfileBootstrap';
 import { getOwnerByUserId } from '../../src/services/profileData';
@@ -22,7 +22,7 @@ import { resolveCurrentProfiles } from '../../src/services/profileCache';
 import { uploadOwnerDocuments, submitOwnerVerification, updateOwnerProfile, updateUserProfilePhoto } from '../../src/services/api';
 import { pickAndUploadDocument } from '../../src/services/uploadService';
 import { showError, showSuccess } from '../../src/utils/feedback';
-import { readAuthUserProfilePhoto, resolveProfilePhotoUrl } from '../../src/utils/profilePhoto';
+import { hasOwnerProfilePhoto, resolveOwnerProfilePhotoUrl } from '../../src/utils/profilePhoto';
 import {
   assessOwnerVerificationReadiness,
   getOwnerFlowPhase,
@@ -56,7 +56,6 @@ export default function OwnerAccount() {
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
   const [localProfilePhotoUrl, setLocalProfilePhotoUrl] = useState<string | undefined>();
-  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
   const [error, setError] = useState('');
   const profileSyncing = Boolean(user?.role === 'owner' && !owner?.id);
   const resolvedOwnerId = owner?.id ?? resolveCurrentProfiles().owner?.id ?? null;
@@ -96,30 +95,44 @@ export default function OwnerAccount() {
   const flowPhase = getOwnerFlowPhase(owner?.status);
   const onboardingMode = ownerCanSubmitVerification(owner?.status);
   const docs = OWNER_DOC_FIELDS_BY_TYPE[documentType];
-  const avatarPhotoUrl =
-    resolveProfilePhotoUrl(localProfilePhotoUrl) ??
-    readAuthUserProfilePhoto(user) ??
-    readAuthUserProfilePhoto(resolveCurrentProfiles().user);
-  const profilePhotoUrl = avatarPhotoUrl;
+  const cachedUser = resolveCurrentProfiles().user;
+  const profilePhotoUrl = resolveOwnerProfilePhotoUrl({
+    localPhotoUrl: localProfilePhotoUrl,
+    user,
+    owner,
+  });
+  const hasProfilePhoto = hasOwnerProfilePhoto({
+    localPhotoUrl: localProfilePhotoUrl,
+    user: user ?? cachedUser,
+    owner,
+  });
 
   useEffect(() => {
-    const cachedPhoto =
-      readAuthUserProfilePhoto(user) ??
-      readAuthUserProfilePhoto(resolveCurrentProfiles().user);
-    if (cachedPhoto) {
-      setLocalProfilePhotoUrl(cachedPhoto);
-      setAvatarImageFailed(false);
-    }
-  }, [user?.profilePhoto, profileRevision]);
-
-  useEffect(() => {
-    console.log('[OWNER_AVATAR_DEBUG]', {
-      avatarField: 'AuthUser.profilePhoto',
-      avatarPhotoUrl: avatarPhotoUrl ?? null,
-      userProfilePhoto: user?.profilePhoto ?? null,
-      localProfilePhotoUrl: localProfilePhotoUrl ?? null,
+    const syncedPhoto = resolveOwnerProfilePhotoUrl({
+      user,
+      owner: owner ?? resolveCurrentProfiles().owner,
     });
-  }, [avatarPhotoUrl, user?.profilePhoto, localProfilePhotoUrl]);
+    if (syncedPhoto) {
+      setLocalProfilePhotoUrl(syncedPhoto);
+    }
+  }, [user?.profilePhoto, owner?.documents?.selfie, profileRevision]);
+
+  useEffect(() => {
+    console.log('[OWNER_AVATAR_FIX_DEBUG]', {
+      avatarField: 'AuthUser.profilePhoto',
+      avatarPhotoUrl: profilePhotoUrl ?? null,
+      userProfilePhoto: user?.profilePhoto ?? null,
+      ownerSelfie: owner?.documents?.selfie ?? null,
+      localProfilePhotoUrl: localProfilePhotoUrl ?? null,
+      hasProfilePhoto,
+    });
+  }, [
+    profilePhotoUrl,
+    user?.profilePhoto,
+    owner?.documents?.selfie,
+    localProfilePhotoUrl,
+    hasProfilePhoto,
+  ]);
 
   const docValues = useMemo<Record<DocKey, string | undefined>>(() => {
     const storedDocs = {
@@ -320,13 +333,11 @@ export default function OwnerAccount() {
     try {
       const url = await pickAndUploadDocument('selfie');
       if (!url) return;
-      const resolvedUploadUrl = resolveProfilePhotoUrl(url) ?? url;
-      setLocalProfilePhotoUrl(resolvedUploadUrl);
-      setAvatarImageFailed(false);
-      console.log('[OWNER_AVATAR_DEBUG]', {
+      setLocalProfilePhotoUrl(url);
+      console.log('[OWNER_AVATAR_FIX_DEBUG]', {
         uploadUrl: url,
-        resolvedUploadUrl,
         persistedField: 'User.profilePhoto',
+        mapperField: 'AuthUser.profilePhoto',
         avatarField: 'AuthUser.profilePhoto',
       });
       const res = await updateUserProfilePhoto(user.userId, url);
@@ -336,11 +347,14 @@ export default function OwnerAccount() {
         return;
       }
       if (res.data?.profilePhoto) {
-        setLocalProfilePhotoUrl(resolveProfilePhotoUrl(res.data.profilePhoto) ?? res.data.profilePhoto);
+        setLocalProfilePhotoUrl(res.data.profilePhoto);
       }
-      console.log('[OWNER_AVATAR_DEBUG]', {
+      console.log('[OWNER_AVATAR_FIX_DEBUG]', {
         mappedUserProfilePhoto: res.data?.profilePhoto ?? null,
-        avatarWillUse: res.data?.profilePhoto ?? resolvedUploadUrl,
+        ownerAfterUpload: res.data
+          ? { userId: res.data.userId, profilePhoto: res.data.profilePhoto ?? null }
+          : null,
+        avatarWillUse: res.data?.profilePhoto ?? url,
       });
       refresh();
       showSuccess('Foto de perfil', 'Tu foto se guardó correctamente.');
@@ -461,23 +475,11 @@ export default function OwnerAccount() {
       <ScreenHeader title="Mi cuenta" />
       <ScrollView contentContainerStyle={styles.content}>
         <Card style={styles.profileCard}>
-          <View style={styles.avatar}>
-            {avatarPhotoUrl && !avatarImageFailed ? (
-              <Image
-                source={{ uri: avatarPhotoUrl }}
-                style={styles.avatarImage}
-                onError={() => {
-                  console.log('[OWNER_AVATAR_DEBUG]', {
-                    avatarLoadFailed: true,
-                    avatarPhotoUrl,
-                  });
-                  setAvatarImageFailed(true);
-                }}
-              />
-            ) : (
-              <Ionicons name="person" size={32} color={colors.textMuted} />
-            )}
-          </View>
+          <OwnerProfileAvatar
+            photoUrl={profilePhotoUrl}
+            size={72}
+            debugContext="owner-account-header"
+          />
           <Text style={styles.name}>{owner?.name ?? user?.fullName ?? '—'}</Text>
           <Text style={styles.phone}>{phoneValue}</Text>
           {profileSyncing ? (
@@ -561,7 +563,7 @@ export default function OwnerAccount() {
         <Text style={styles.sectionTitle}>Foto de perfil</Text>
         <Card>
           <TouchableOpacity
-            style={[styles.docBtn, profilePhotoUrl ? styles.docBtnDone : styles.docBtnPending]}
+            style={[styles.docBtn, hasProfilePhoto ? styles.docBtnDone : styles.docBtnPending]}
             onPress={() => void uploadProfilePhoto()}
             disabled={
               uploadingProfilePhoto ||
@@ -576,22 +578,29 @@ export default function OwnerAccount() {
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : (
                 <Ionicons
-                  name={profilePhotoUrl ? 'checkmark-circle' : 'camera-outline'}
+                  name={hasProfilePhoto ? 'checkmark-circle' : 'camera-outline'}
                   size={22}
-                  color={profilePhotoUrl ? colors.online : colors.textSecondary}
+                  color={hasProfilePhoto ? colors.online : colors.textSecondary}
                 />
               )}
               <View style={styles.docTexts}>
                 <Text style={styles.docLabel}>Foto de perfil</Text>
-                <Text style={[styles.docStatus, profilePhotoUrl && styles.docStatusDone]}>
+                <Text style={[styles.docStatus, hasProfilePhoto && styles.docStatusDone]}>
                   {uploadingProfilePhoto
                     ? 'Subiendo…'
-                    : profilePhotoUrl
+                    : hasProfilePhoto
                       ? 'Subida · tocar para reemplazar'
                       : 'Obligatoria · tocar para subir'}
                 </Text>
               </View>
             </View>
+            {hasProfilePhoto ? (
+              <OwnerProfileAvatar
+                photoUrl={profilePhotoUrl}
+                size={44}
+                debugContext="owner-account-profile-row"
+              />
+            ) : null}
           </TouchableOpacity>
         </Card>
 
@@ -719,20 +728,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md },
   profileCard: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.borderLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-  },
   name: { ...typography.subtitle, color: colors.text },
   phone: { ...typography.body, color: colors.textSecondary },
   sectionHeader: {

@@ -567,13 +567,17 @@ export async function updateUserProfilePhoto(
   if (useMockApi()) return mock.updateUserProfilePhoto(userId, profilePhoto);
   const res = await apiPost<AuthUser>('/auth/me/photo', { profilePhoto });
   const mappedUser = extractAuthUserFromApiPayload(res.data);
-  const normalizedPhoto = resolveProfilePhotoUrl(mappedUser?.profilePhoto ?? profilePhoto);
-  const userWithPhoto =
-    mappedUser && normalizedPhoto
-      ? { ...mappedUser, profilePhoto: normalizedPhoto }
-      : mappedUser;
+  const cachedUser = resolveCachedProfiles().user;
+  const normalizedPhoto =
+    resolveProfilePhotoUrl(mappedUser?.profilePhoto ?? profilePhoto) ?? profilePhoto.trim();
 
-  console.log('[OWNER_AVATAR_DEBUG]', {
+  const userWithPhoto: AuthUser | null = mappedUser
+    ? { ...mappedUser, profilePhoto: normalizedPhoto }
+    : cachedUser && cachedUser.userId === userId
+      ? { ...cachedUser, profilePhoto: normalizedPhoto, updatedAt: new Date().toISOString() }
+      : null;
+
+  console.log('[OWNER_AVATAR_FIX_DEBUG]', {
     uploadUrl: profilePhoto,
     persistedField: 'User.profilePhoto',
     mapperField: 'AuthUser.profilePhoto',
@@ -591,7 +595,7 @@ export async function updateUserProfilePhoto(
       m.default.getItem(SESSION_KEYS.refreshToken)
     );
     await persistSession(userWithPhoto, token ?? undefined, refreshToken ?? undefined);
-    console.log('[OWNER_AVATAR_DEBUG]', {
+    console.log('[OWNER_AVATAR_FIX_DEBUG]', {
       ownerAfterUpload: {
         userId: userWithPhoto.userId,
         profilePhoto: userWithPhoto.profilePhoto ?? null,

@@ -1,4 +1,4 @@
-import { AuthUser } from '../types/models';
+import { AuthUser, Owner } from '../types/models';
 import { getApiUrl } from '../services/api/config';
 
 /** Resolve stored profile photo paths to a fetchable absolute URL for Image. */
@@ -15,6 +15,34 @@ export function resolveProfilePhotoUrl(url?: string | null): string | undefined 
 
 export function readAuthUserProfilePhoto(user?: AuthUser | null): string | undefined {
   return resolveProfilePhotoUrl(user?.profilePhoto);
+}
+
+export function readOwnerDocumentSelfie(owner?: Owner | null): string | undefined {
+  return resolveProfilePhotoUrl(owner?.documents?.selfie);
+}
+
+export function resolveOwnerProfilePhotoUrl(input: {
+  localPhotoUrl?: string | null;
+  user?: AuthUser | null;
+  owner?: Owner | null;
+}): string | undefined {
+  return (
+    resolveProfilePhotoUrl(input.localPhotoUrl) ??
+    readAuthUserProfilePhoto(input.user) ??
+    readOwnerDocumentSelfie(input.owner)
+  );
+}
+
+export function hasOwnerProfilePhoto(input: {
+  localPhotoUrl?: string | null;
+  user?: AuthUser | null;
+  owner?: Owner | null;
+}): boolean {
+  const raw =
+    input.localPhotoUrl?.trim() ||
+    input.user?.profilePhoto?.trim() ||
+    input.owner?.documents?.selfie?.trim();
+  return Boolean(raw);
 }
 
 export function extractAuthUserFromApiPayload(data: unknown): AuthUser | null {
