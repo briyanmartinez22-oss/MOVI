@@ -5,6 +5,7 @@ import { apiGet, apiPost } from './api/client';
 import { getCurrentUser, getStore, saveStore, setCurrentUser, updateStore } from './mockStore';
 import { clearProfileCache, setProfileCache } from './profileCache';
 import { resetProfileHydration } from './profileHydration';
+import { resolveProfilePhotoUrl } from '../utils/profilePhoto';
 import { realtimeClient } from './realtimeClient';
 import { syncPushTokenAfterAuth } from './pushNotificationService';
 
@@ -57,7 +58,12 @@ async function fetchAndCacheProfiles(): Promise<void> {
   }>('/users/me/profiles');
   if (res.ok && res.data) {
     setProfileCache({
-      user: res.data.user,
+      user: res.data.user
+        ? {
+            ...res.data.user,
+            profilePhoto: resolveProfilePhotoUrl(res.data.user.profilePhoto),
+          }
+        : res.data.user,
       owner: res.data.owner,
       driver: res.data.driver,
       business: res.data.business,
@@ -82,14 +88,18 @@ export async function loadSession(): Promise<AuthSession | null> {
     if (!useMockApi() && authToken) {
       const me = await apiGet<AuthUser>('/auth/me');
       if (!me.ok || !me.data) return null;
-      setProfileCache({ user: me.data });
-      await AsyncStorage.setItem(SESSION_KEYS.currentUser, JSON.stringify(me.data));
+      const normalizedUser = {
+        ...me.data,
+        profilePhoto: resolveProfilePhotoUrl(me.data.profilePhoto),
+      };
+      setProfileCache({ user: normalizedUser });
+      await AsyncStorage.setItem(SESSION_KEYS.currentUser, JSON.stringify(normalizedUser));
       await fetchAndCacheProfiles();
       return {
-        user: me.data,
+        user: normalizedUser,
         authToken,
-        role: me.data.role,
-        phoneNumber: me.data.phoneNumber,
+        role: normalizedUser.role,
+        phoneNumber: normalizedUser.phoneNumber,
       };
     }
 

@@ -50,7 +50,17 @@ export function setProfileCache(data: {
   tripHistory?: TripHistoryRecord[];
   driverSessions?: DriverSession[];
 }): void {
-  if (data.user !== undefined) cachedUser = data.user;
+  if (data.user !== undefined) {
+    if (data.user && cachedUser && cachedUser.userId === data.user.userId) {
+      cachedUser = {
+        ...cachedUser,
+        ...data.user,
+        profilePhoto: data.user.profilePhoto ?? cachedUser.profilePhoto,
+      };
+    } else {
+      cachedUser = data.user;
+    }
+  }
   if (data.owner !== undefined) {
     if (data.owner && cachedOwner && cachedOwner.id === data.owner.id) {
       cachedOwner = {

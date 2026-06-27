@@ -29,7 +29,8 @@ function authUsersEqual(a: AuthUser | null, b: AuthUser | null): boolean {
     a.userId === b.userId &&
     a.role === b.role &&
     a.phoneNumber === b.phoneNumber &&
-    a.fullName === b.fullName
+    a.fullName === b.fullName &&
+    a.profilePhoto === b.profilePhoto
   );
 }
 
@@ -108,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setUser(session.user);
           await refreshProfilesFromApi();
+          refresh();
           void import('../services/pushNotificationService').then((m) => m.syncPushTokenAfterAuth());
         }
       } else {

@@ -1,11 +1,20 @@
 import type { Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { env } from '../config/env';
 import { parseJsonField, toAuthUser } from '../utils/normalize';
 import { getDriverLicenseUrls } from '../utils/driver-license-docs';
 import { enrichDriverRecord } from '../services/driver-approval.service';
 
 type RoleAssignmentRow = Prisma.UserRoleAssignmentGetPayload<{ select: { role: true } }>;
 type OwnerVehicleRow = Prisma.VehicleGetPayload<{ include: { driver: true } }>;
+
+function normalizePublicAssetUrl(url: string): string {
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const base = env.publicUrl?.replace(/\/$/, '');
+  if (!base) return trimmed;
+  return trimmed.startsWith('/') ? `${base}${trimmed}` : `${base}/${trimmed}`;
+}
 
 export async function assignUserRole(userId: string, role: UserRole) {
   return prisma.userRoleAssignment.upsert({
@@ -104,7 +113,7 @@ export async function getUserProfiles(userId: string) {
 export async function updateUserProfilePhoto(userId: string, profilePhoto: string) {
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { profilePhoto },
+    data: { profilePhoto: normalizePublicAssetUrl(profilePhoto) },
   });
   return toAuthUser(user);
 }

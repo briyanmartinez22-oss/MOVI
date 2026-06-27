@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +22,7 @@ import { resolveCurrentProfiles } from '../../src/services/profileCache';
 import { uploadOwnerDocuments, submitOwnerVerification, updateOwnerProfile, updateUserProfilePhoto } from '../../src/services/api';
 import { pickAndUploadDocument } from '../../src/services/uploadService';
 import { showError, showSuccess } from '../../src/utils/feedback';
+import { readAuthUserProfilePhoto, resolveProfilePhotoUrl } from '../../src/utils/profilePhoto';
 import {
   assessOwnerVerificationReadiness,
   getOwnerFlowPhase,
@@ -53,6 +55,8 @@ export default function OwnerAccount() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
+  const [localProfilePhotoUrl, setLocalProfilePhotoUrl] = useState<string | undefined>();
+  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
   const [error, setError] = useState('');
   const profileSyncing = Boolean(user?.role === 'owner' && !owner?.id);
   const resolvedOwnerId = owner?.id ?? resolveCurrentProfiles().owner?.id ?? null;
@@ -92,7 +96,30 @@ export default function OwnerAccount() {
   const flowPhase = getOwnerFlowPhase(owner?.status);
   const onboardingMode = ownerCanSubmitVerification(owner?.status);
   const docs = OWNER_DOC_FIELDS_BY_TYPE[documentType];
-  const profilePhotoUrl = user?.profilePhoto;
+  const avatarPhotoUrl =
+    resolveProfilePhotoUrl(localProfilePhotoUrl) ??
+    readAuthUserProfilePhoto(user) ??
+    readAuthUserProfilePhoto(resolveCurrentProfiles().user);
+  const profilePhotoUrl = avatarPhotoUrl;
+
+  useEffect(() => {
+    const cachedPhoto =
+      readAuthUserProfilePhoto(user) ??
+      readAuthUserProfilePhoto(resolveCurrentProfiles().user);
+    if (cachedPhoto) {
+      setLocalProfilePhotoUrl(cachedPhoto);
+      setAvatarImageFailed(false);
+    }
+  }, [user?.profilePhoto, profileRevision]);
+
+  useEffect(() => {
+    console.log('[OWNER_AVATAR_DEBUG]', {
+      avatarField: 'AuthUser.profilePhoto',
+      avatarPhotoUrl: avatarPhotoUrl ?? null,
+      userProfilePhoto: user?.profilePhoto ?? null,
+      localProfilePhotoUrl: localProfilePhotoUrl ?? null,
+    });
+  }, [avatarPhotoUrl, user?.profilePhoto, localProfilePhotoUrl]);
 
   const docValues = useMemo<Record<DocKey, string | undefined>>(() => {
     const storedDocs = {
@@ -293,12 +320,28 @@ export default function OwnerAccount() {
     try {
       const url = await pickAndUploadDocument('selfie');
       if (!url) return;
+      const resolvedUploadUrl = resolveProfilePhotoUrl(url) ?? url;
+      setLocalProfilePhotoUrl(resolvedUploadUrl);
+      setAvatarImageFailed(false);
+      console.log('[OWNER_AVATAR_DEBUG]', {
+        uploadUrl: url,
+        resolvedUploadUrl,
+        persistedField: 'User.profilePhoto',
+        avatarField: 'AuthUser.profilePhoto',
+      });
       const res = await updateUserProfilePhoto(user.userId, url);
       if (!res.ok) {
         setError(res.error ?? 'No se pudo guardar la foto de perfil.');
         showError('Error al subir foto', res.error ?? 'No se pudo guardar la foto de perfil.');
         return;
       }
+      if (res.data?.profilePhoto) {
+        setLocalProfilePhotoUrl(resolveProfilePhotoUrl(res.data.profilePhoto) ?? res.data.profilePhoto);
+      }
+      console.log('[OWNER_AVATAR_DEBUG]', {
+        mappedUserProfilePhoto: res.data?.profilePhoto ?? null,
+        avatarWillUse: res.data?.profilePhoto ?? resolvedUploadUrl,
+      });
       refresh();
       showSuccess('Foto de perfil', 'Tu foto se guardó correctamente.');
     } catch (e: unknown) {
@@ -419,7 +462,21 @@ export default function OwnerAccount() {
       <ScrollView contentContainerStyle={styles.content}>
         <Card style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={32} color={colors.textMuted} />
+            {avatarPhotoUrl && !avatarImageFailed ? (
+              <Image
+                source={{ uri: avatarPhotoUrl }}
+                style={styles.avatarImage}
+                onError={() => {
+                  console.log('[OWNER_AVATAR_DEBUG]', {
+                    avatarLoadFailed: true,
+                    avatarPhotoUrl,
+                  });
+                  setAvatarImageFailed(true);
+                }}
+              />
+            ) : (
+              <Ionicons name="person" size={32} color={colors.textMuted} />
+            )}
           </View>
           <Text style={styles.name}>{owner?.name ?? user?.fullName ?? '—'}</Text>
           <Text style={styles.phone}>{phoneValue}</Text>
@@ -669,6 +726,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.borderLight,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
   },
   name: { ...typography.subtitle, color: colors.text },
   phone: { ...typography.body, color: colors.textSecondary },

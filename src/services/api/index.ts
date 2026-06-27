@@ -29,7 +29,7 @@ import type {
   Trip360Data,
 } from '../../types/adminCenter';
 import type { AdminStaffRole } from '../../types/adminStaff';
-import { persistSession, logout as clearAuthSession } from '../authService';
+import { persistSession, logout as clearAuthSession, SESSION_KEYS } from '../authService';
 import * as mock from '../mockApi/mockImpl';
 import * as mockStore from '../mockStore';
 import { useMockApi } from './config';
@@ -43,6 +43,7 @@ import {
 import { realtimeClient } from '../realtimeClient';
 import { mapOwner, mapSubscription, mapVehicle } from '../apiMappers';
 import { normalizePhone } from '../../utils/platform';
+import { extractAuthUserFromApiPayload, resolveProfilePhotoUrl } from '../../utils/profilePhoto';
 import { uploadFile } from '../uploadService';
 
 function authPhone(phone: string): string {
@@ -565,8 +566,40 @@ export async function updateUserProfilePhoto(
 ): Promise<ApiResponse<AuthUser>> {
   if (useMockApi()) return mock.updateUserProfilePhoto(userId, profilePhoto);
   const res = await apiPost<AuthUser>('/auth/me/photo', { profilePhoto });
-  if (res.ok && res.data) setProfileCache({ user: res.data });
-  return res.ok ? ok(res.data!) : fail(res.error ?? 'Error al actualizar foto');
+  const mappedUser = extractAuthUserFromApiPayload(res.data);
+  const normalizedPhoto = resolveProfilePhotoUrl(mappedUser?.profilePhoto ?? profilePhoto);
+  const userWithPhoto =
+    mappedUser && normalizedPhoto
+      ? { ...mappedUser, profilePhoto: normalizedPhoto }
+      : mappedUser;
+
+  console.log('[OWNER_AVATAR_DEBUG]', {
+    uploadUrl: profilePhoto,
+    persistedField: 'User.profilePhoto',
+    mapperField: 'AuthUser.profilePhoto',
+    avatarField: 'AuthUser.profilePhoto',
+    apiOk: res.ok,
+    mappedUserProfilePhoto: userWithPhoto?.profilePhoto ?? null,
+  });
+
+  if (res.ok && userWithPhoto) {
+    setProfileCache({ user: userWithPhoto });
+    const token = await import('@react-native-async-storage/async-storage').then((m) =>
+      m.default.getItem(SESSION_KEYS.authToken)
+    );
+    const refreshToken = await import('@react-native-async-storage/async-storage').then((m) =>
+      m.default.getItem(SESSION_KEYS.refreshToken)
+    );
+    await persistSession(userWithPhoto, token ?? undefined, refreshToken ?? undefined);
+    console.log('[OWNER_AVATAR_DEBUG]', {
+      ownerAfterUpload: {
+        userId: userWithPhoto.userId,
+        profilePhoto: userWithPhoto.profilePhoto ?? null,
+      },
+    });
+    return ok(userWithPhoto);
+  }
+  return fail(res.error ?? 'Error al actualizar foto');
 }
 
 export function saveCompletedDelivery(
@@ -1376,8 +1409,14 @@ export async function fetchUserProfiles() {
       res.data.owner as Record<string, unknown> | null,
       res.data.user?.userId
     );
+    const user = res.data.user
+      ? {
+          ...res.data.user,
+          profilePhoto: resolveProfilePhotoUrl(res.data.user.profilePhoto),
+        }
+      : res.data.user;
     const normalized = {
-      user: res.data.user,
+      user,
       owner,
       driver: res.data.driver,
       business: res.data.business,
@@ -1549,7 +1588,14 @@ export async function fetchMe(): Promise<ApiResponse<AuthUser>> {
     return user ? ok(user) : fail('No autenticado');
   }
   const res = await apiGet<AuthUser>('/auth/me');
-  if (res.ok && res.data) setProfileCache({ user: res.data });
+  if (res.ok && res.data) {
+    const normalizedUser = {
+      ...res.data,
+      profilePhoto: resolveProfilePhotoUrl(res.data.profilePhoto),
+    };
+    setProfileCache({ user: normalizedUser });
+    return ok(normalizedUser);
+  }
   return res;
 }
 

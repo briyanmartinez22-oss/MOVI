@@ -5,7 +5,7 @@ import { isProfileHydrated, markProfileHydrated } from '../services/profileHydra
 import { useAuth } from '../context/AuthContext';
 
 export function useProfileBootstrap(scope: 'full' | 'owner' = 'full') {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const userId = user?.userId ?? null;
   const alreadyHydrated = userId ? isProfileHydrated(scope, userId) : false;
   const [loading, setLoading] = useState(!useMockApi() && !alreadyHydrated);
@@ -46,6 +46,7 @@ export function useProfileBootstrap(scope: 'full' | 'owner' = 'full') {
             }
           }
           markProfileHydrated('owner', userId);
+          refresh();
         } else {
           const result = await refreshProfilesFromApi();
           if (!result.ok) {
@@ -53,13 +54,14 @@ export function useProfileBootstrap(scope: 'full' | 'owner' = 'full') {
             return;
           }
           markProfileHydrated('full', userId);
+          refresh();
         }
       } finally {
         inFlightRef.current = false;
         setLoading(false);
       }
     },
-    [userId, scope]
+    [userId, scope, refresh]
   );
 
   useEffect(() => {
