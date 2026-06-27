@@ -54,7 +54,7 @@ export default function OwnerDashboard() {
 
   const flowPhase = getOwnerFlowPhase(owner.status);
   const statusColor =
-    flowPhase === 'approved' ? colors.success
+    flowPhase === 'approved' ? colors.online
     : flowPhase === 'blocked' ? colors.danger
     : flowPhase === 'submitted' ? colors.warning
     : colors.textSecondary;
