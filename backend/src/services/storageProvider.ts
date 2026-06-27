@@ -7,7 +7,7 @@ import {
   isCloudinaryConfigured,
   isS3Configured,
 } from '../config/env';
-import { uploadToCloudinary } from './cloudinary.service';
+import { verifyCloudinaryConnection, uploadToCloudinary } from './cloudinary.service';
 
 export type StorageProviderMode = 'local' | 's3' | 'cloudinary';
 
@@ -50,7 +50,10 @@ function createLocalProvider(): StorageProvider {
       const storedName = buildStoredName(sanitizeFilename(filename));
       const filePath = path.join(uploadsDir, storedName);
       await fs.writeFile(filePath, buffer);
-      const base = env.publicUrl?.replace(/\/$/, '') ?? '';
+      const base = env.publicUrl?.replace(/\/$/, '');
+      if (!base && env.nodeEnv === 'production') {
+        throw new Error('PUBLIC_URL is required when using local file storage in production');
+      }
       const url = base ? `${base}/uploads/${storedName}` : `/uploads/${storedName}`;
       return {
         url,
@@ -116,28 +119,44 @@ async function createCloudinaryProvider(): Promise<StorageProvider> {
 
 let cachedProvider: StorageProvider | null = null;
 
+export function getCachedStorageProviderMode(): StorageProviderMode | null {
+  return cachedProvider?.mode ?? null;
+}
+
 export async function getStorageProvider(): Promise<StorageProvider> {
   if (cachedProvider) return cachedProvider;
 
   const mode = getResolvedStorageMode();
 
   if (mode === 'cloudinary' && isCloudinaryConfigured()) {
-    cachedProvider = await createCloudinaryProvider();
-    console.log('Storage provider: Cloudinary');
-  } else if (mode === 's3' && isS3Configured()) {
-    cachedProvider = await createS3Provider();
-    console.log('Storage provider: S3');
-  } else {
-    if (env.storageProvider !== 'local' && env.nodeEnv !== 'test') {
-      console.warn(
-        `Storage provider: local fallback (requested ${env.storageProvider}, credentials missing)`
-      );
-    } else {
-      console.log('Storage provider: local (uploads/)');
+    const verification = await verifyCloudinaryConnection();
+    if (verification.active) {
+      cachedProvider = await createCloudinaryProvider();
+      console.log('Storage provider: Cloudinary');
+      return cachedProvider;
     }
+
+    console.warn(
+      `[UPLOAD_500_DEBUG] Cloudinary unavailable (${verification.error ?? 'unknown'}). Falling back to local storage.`
+    );
     cachedProvider = createLocalProvider();
+    return cachedProvider;
   }
 
+  if (mode === 's3' && isS3Configured()) {
+    cachedProvider = await createS3Provider();
+    console.log('Storage provider: S3');
+    return cachedProvider;
+  }
+
+  if (env.storageProvider !== 'local' && env.nodeEnv !== 'test') {
+    console.warn(
+      `[UPLOAD_500_DEBUG] Storage fallback to local (requested ${env.storageProvider}, credentials missing or invalid).`
+    );
+  } else {
+    console.log('Storage provider: local (uploads/)');
+  }
+  cachedProvider = createLocalProvider();
   return cachedProvider;
 }
 

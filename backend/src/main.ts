@@ -3,9 +3,10 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import express from 'express';
-import path from 'node:path';
+import fs from 'node:fs/promises';
 import { AppModule } from './app.module';
 import { assertEnv, env, getResolvedOtpMode, getResolvedPushMode, getResolvedStorageMode } from './config/env';
+import { getUploadsDir } from './services/storageProvider';
 import { TripHubService } from './realtime/trip-hub.service';
 import { ensureSuperAdmin, SUPER_ADMIN_PHONE } from './services/ensure-super-admin.service';
 
@@ -26,8 +27,9 @@ async function bootstrap() {
   });
   app.use(express.json({ limit: '10mb' }));
 
-  if (env.storageMode !== 's3' && getResolvedStorageMode() === 'local') {
-    const uploadsDir = path.join(__dirname, '..', 'uploads');
+  if (getResolvedStorageMode() !== 's3') {
+    const uploadsDir = getUploadsDir();
+    await fs.mkdir(uploadsDir, { recursive: true });
     app.use('/uploads', express.static(uploadsDir));
   }
 
